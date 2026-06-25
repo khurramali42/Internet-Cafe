@@ -1,0 +1,167 @@
+<?php
+// COPY THIS CODE INTO A FILE NAMED 'api.php' IN YOUR SERVER'S PUBLIC FOLDER (e.g. htdocs/speedy_cafe/api.php)
+
+header("Access-Control-Allow-Origin: *");
+header("Access-Control-Allow-Headers: Content-Type");
+header("Content-Type: application/json");
+
+// --- DATABASE CONFIGURATION ---
+$host = 'localhost';
+$db   = 'speedy_cafe';
+$user = 'root';      // Default XAMPP user
+$pass = '';          // Default XAMPP password is empty
+$charset = 'utf8mb4';
+// ------------------------------
+
+$dsn = "mysql:host=$host;dbname=$db;charset=$charset";
+$options = [
+    PDO::ATTR_ERRMODE            => PDO::ERRMODE_EXCEPTION,
+    PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
+    PDO::ATTR_EMULATE_PREPARES   => false,
+];
+
+try {
+    $pdo = new PDO($dsn, $user, $pass, $options);
+} catch (\PDOException $e) {
+    // Return JSON error so frontend handles it gracefully
+    echo json_encode(['error' => 'DB Connection Failed: ' . $e->getMessage()]);
+    exit;
+}
+
+function getJsonInput() {
+    return json_decode(file_get_contents('php://input'), true);
+}
+
+$action = $_GET['action'] ?? '';
+
+try {
+    switch($action) {
+        case 'init':
+            $data = [
+                'cabins' => $pdo->query("SELECT * FROM cabins")->fetchAll(),
+                'customers' => $pdo->query("SELECT * FROM customers")->fetchAll(),
+                'sessions' => [],
+                'transactions' => $pdo->query("SELECT * FROM transactions")->fetchAll(),
+                'inventory' => $pdo->query("SELECT * FROM inventory")->fetchAll(),
+                'repairs' => $pdo->query("SELECT * FROM repairs")->fetchAll(),
+                'users' => $pdo->query("SELECT * FROM users")->fetchAll(),
+                'auditLogs' => $pdo->query("SELECT * FROM audit_logs ORDER BY timestamp DESC LIMIT 100")->fetchAll(),
+            ];
+
+            // Handle JSON columns for sessions
+            $sessions = $pdo->query("SELECT * FROM sessions")->fetchAll();
+            foreach($sessions as $s) {
+                $s['holds'] = json_decode($s['holdsJson'] ?? '[]');
+                unset($s['holdsJson']);
+                $data['sessions'][] = $s;
+            }
+
+            echo json_encode($data);
+            break;
+
+        case 'sync_cabin':
+            $d = getJsonInput();
+            $stmt = $pdo->prepare("INSERT INTO cabins (id, name, status, currentSessionId, statusReason, expectedFix) VALUES (?, ?, ?, ?, ?, ?) 
+                ON DUPLICATE KEY UPDATE status=?, currentSessionId=?, statusReason=?, expectedFix=?");
+            $stmt->execute([
+                $d['id'], $d['name'], $d['status'], $d['currentSessionId'] ?? null, $d['statusReason'] ?? null, $d['expectedFix'] ?? null,
+                $d['status'], $d['currentSessionId'] ?? null, $d['statusReason'] ?? null, $d['expectedFix'] ?? null
+            ]);
+            echo json_encode(['status'=>'ok']);
+            break;
+
+        case 'sync_session':
+            $d = getJsonInput();
+            $holdsJson = json_encode($d['holds'] ?? []);
+            $stmt = $pdo->prepare("INSERT INTO sessions (id, cabinId, customerId, inTime, outTime, ratePerHour, totalHoldMinutes, effectiveMinutes, amountDue, amountPaid, status, createdBy, isManual, manualReason, holdsJson) 
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON DUPLICATE KEY UPDATE outTime=?, totalHoldMinutes=?, effectiveMinutes=?, amountDue=?, amountPaid=?, status=?, holdsJson=?");
+            $stmt->execute([
+                $d['id'], $d['cabinId'], $d['customerId'], $d['inTime'], $d['outTime'] ?? null, $d['ratePerHour'], $d['totalHoldMinutes'], $d['effectiveMinutes'], $d['amountDue'], $d['amountPaid'], $d['status'], $d['createdBy'], $d['isManual']?1:0, $d['manualReason']??null, $holdsJson,
+                $d['outTime'] ?? null, $d['totalHoldMinutes'], $d['effectiveMinutes'], $d['amountDue'], $d['amountPaid'], $d['status'], $holdsJson
+            ]);
+            echo json_encode(['status'=>'ok']);
+            break;
+
+        case 'sync_customer':
+            $d = getJsonInput();
+            $stmt = $pdo->prepare("INSERT INTO customers (id, name, contact, remarks, totalSpent, outstandingBalance) VALUES (?, ?, ?, ?, ?, ?)
+                ON DUPLICATE KEY UPDATE name=?, contact=?, remarks=?, totalSpent=?, outstandingBalance=?");
+            $stmt->execute([
+                $d['id'], $d['name'], $d['contact'], $d['remarks']??'', $d['totalSpent'], $d['outstandingBalance'],
+                $d['name'], $d['contact'], $d['remarks']??'', $d['totalSpent'], $d['outstandingBalance']
+            ]);
+            echo json_encode(['status'=>'ok']);
+            break;
+
+        case 'sync_transaction':
+            $d = getJsonInput();
+            $stmt = $pdo->prepare("INSERT INTO transactions (id, type, amount, date, description, category, relatedId, customerId, isManual) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON DUPLICATE KEY UPDATE type=?, amount=?, date=?, description=?, category=?, relatedId=?, customerId=?");
+            $stmt->execute([
+                $d['id'], $d['type'], $d['amount'], $d['date'], $d['description'], $d['category']??'', $d['relatedId']??null, $d['customerId']??null, $d['isManual']?1:0,
+                $d['type'], $d['amount'], $d['date'], $d['description'], $d['category']??'', $d['relatedId']??null, $d['customerId']??null
+            ]);
+            echo json_encode(['status'=>'ok']);
+            break;
+
+        case 'sync_inventory':
+            $d = getJsonInput();
+            $stmt = $pdo->prepare("INSERT INTO inventory (id, name, category, quantity, status, purchaseDate, cost, remarks) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                ON DUPLICATE KEY UPDATE name=?, category=?, quantity=?, status=?, cost=?, remarks=?");
+            $stmt->execute([
+                $d['id'], $d['name'], $d['category'], $d['quantity'], $d['status'], $d['purchaseDate'], $d['cost'], $d['remarks']??'',
+                $d['name'], $d['category'], $d['quantity'], $d['status'], $d['cost'], $d['remarks']??''
+            ]);
+            echo json_encode(['status'=>'ok']);
+            break;
+
+        case 'delete_inventory':
+            $d = getJsonInput();
+            $pdo->prepare("DELETE FROM inventory WHERE id=?")->execute([$d['id']]);
+            echo json_encode(['status'=>'ok']);
+            break;
+
+        case 'sync_user':
+            $d = getJsonInput();
+            $stmt = $pdo->prepare("INSERT INTO users (id, username, passwordHash, fullName, role, isActive, lastLoginAt, email, phone) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON DUPLICATE KEY UPDATE passwordHash=?, fullName=?, role=?, isActive=?, lastLoginAt=?, email=?, phone=?");
+            $stmt->execute([
+                $d['id'], $d['username'], $d['passwordHash'], $d['fullName'], $d['role'], $d['isActive']?1:0, $d['lastLoginAt']??null, $d['email']??null, $d['phone']??null,
+                $d['passwordHash'], $d['fullName'], $d['role'], $d['isActive']?1:0, $d['lastLoginAt']??null, $d['email']??null, $d['phone']??null
+            ]);
+            echo json_encode(['status'=>'ok']);
+            break;
+            
+        case 'delete_user':
+            $d = getJsonInput();
+            $pdo->prepare("DELETE FROM users WHERE id=?")->execute([$d['id']]);
+            echo json_encode(['status'=>'ok']);
+            break;
+
+        case 'sync_repair':
+            $d = getJsonInput();
+            $stmt = $pdo->prepare("INSERT INTO repairs (id, cabinId, reason, reportedBy, startTime, expectedFix, status, closedAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                ON DUPLICATE KEY UPDATE status=?, closedAt=?, expectedFix=?");
+            $stmt->execute([
+                $d['id'], $d['cabinId'], $d['reason'], $d['reportedBy'], $d['startTime'], $d['expectedFix']??null, $d['status'], $d['closedAt']??null,
+                $d['status'], $d['closedAt']??null, $d['expectedFix']??null
+            ]);
+            echo json_encode(['status'=>'ok']);
+            break;
+
+        case 'log_audit':
+            $d = getJsonInput();
+            $stmt = $pdo->prepare("INSERT INTO audit_logs (id, userId, username, action, details, timestamp, ipAddress) VALUES (?, ?, ?, ?, ?, ?, ?)");
+            $stmt->execute([$d['id'], $d['userId'], $d['username'], $d['action'], $d['details'], $d['timestamp'], $_SERVER['REMOTE_ADDR']]);
+            echo json_encode(['status'=>'ok']);
+            break;
+
+        default:
+            echo json_encode(['status' => 'error', 'message' => 'Invalid Action']);
+    }
+} catch (Exception $e) {
+    http_response_code(500);
+    echo json_encode(['error' => $e->getMessage()]);
+}
+?>
