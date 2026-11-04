@@ -89,17 +89,23 @@ if ($action === 'login') {
     $d = input();
     $username = required_text($d, 'username', 50);
     $password = required_text($d, 'password', 200);
-    $attempts = $_SESSION['login_attempts'] ?? 0;
-    $last = $_SESSION['last_attempt_at'] ?? 0;
-    if ($attempts >= 5 && time() - $last < 900) respond(429, ['error' => 'Too many attempts. Try again later']);
+    $identity = hash('sha256', ($_SERVER['REMOTE_ADDR'] ?? 'unknown') . '|' . strtolower($username));
+    $now = time();
+    $pdo->prepare('INSERT IGNORE INTO login_attempts (identityHash, failures, updatedAt) VALUES (?, 0, ?)')->execute([$identity, $now]);
+    $pdo->prepare('UPDATE login_attempts SET failures=0, updatedAt=? WHERE identityHash=? AND updatedAt < ?')
+        ->execute([$now, $identity, $now - 900]);
+    $attempt = $pdo->prepare('SELECT failures FROM login_attempts WHERE identityHash=?');
+    $attempt->execute([$identity]);
+    if ((int) $attempt->fetchColumn() >= 5) respond(429, ['error' => 'Too many attempts. Try again later']);
     $stmt = $pdo->prepare('SELECT * FROM users WHERE username = ? LIMIT 1');
     $stmt->execute([$username]);
     $found = $stmt->fetch();
     if (!$found || !(bool) $found['isActive'] || !password_verify($password, (string) $found['passwordHash'])) {
-        $_SESSION['login_attempts'] = $attempts + 1;
-        $_SESSION['last_attempt_at'] = time();
+        $pdo->prepare('UPDATE login_attempts SET failures = failures + 1, updatedAt=? WHERE identityHash=?')
+            ->execute([$now, $identity]);
         respond(401, ['error' => 'Invalid credentials']);
     }
+    $pdo->prepare('DELETE FROM login_attempts WHERE identityHash=?')->execute([$identity]);
     session_regenerate_id(true);
     $_SESSION = ['user_id' => $found['id'], 'csrf' => bin2hex(random_bytes(32))];
     $pdo->prepare('UPDATE users SET lastLoginAt = ? WHERE id = ?')->execute([(int) (microtime(true) * 1000), $found['id']]);
