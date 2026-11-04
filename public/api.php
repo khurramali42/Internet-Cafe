@@ -46,7 +46,7 @@ function ensure_origin(): void {
         respond(403, ['error' => 'Origin not allowed']);
     }
 }
-$https = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') || (($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? '') === 'https');
+$https = !empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off'; // Proxy must set trusted server HTTPS; client-controlled headers are not trusted.
 if (!$https && !in_array($_SERVER['REMOTE_ADDR'] ?? '', ['127.0.0.1', '::1'], true)) {
     respond(400, ['error' => 'HTTPS is required']);
 }
