@@ -663,7 +663,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       setUsers(newUsers);
       setCurrentUser(updated);
       saveToLocal('users', newUsers);
-      sync('sync_user', 'users', updated);
+      if (!API_URL) sync('sync_user', 'users', updated); // Server profile route handles this in authenticated mode
 
       logAction('PROFILE_UPDATE', 'User updated profile details');
   };
@@ -673,8 +673,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const addUser = (userData: Omit<User, 'id' | 'lastLoginAt'>) => {
        if (API_URL && userData.passwordHash.length < 12) return;
       const newUser: User = { ...userData, id: `u-${Date.now()}`, isActive: true };
-      const newUsers = [...users, newUser];
-      setUsers(newUsers);
+      const newUsers = [...users, API_URL ? { ...newUser, passwordHash: '' } : newUser];
+      setUsers(newUsers); // Do not keep the newly created server password in React state
       saveToLocal('users', newUsers);
       sync('sync_user', 'users', newUser);
       logAction('USER_CREATE', `Created user: ${newUser.username}`);
