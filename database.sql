@@ -17,9 +17,9 @@ CREATE TABLE IF NOT EXISTS users (
     lastLoginAt BIGINT
 );
 
--- Default Admin User (Password: 123)
-INSERT IGNORE INTO users (id, username, passwordHash, fullName, role, isActive) 
-VALUES ('u-admin', 'admin', '123', 'System Admin', 'ADMIN', 1);
+-- No default production passwords are seeded.
+-- Create a strong administrator using: php scripts/bootstrap-admin.php
+-- Existing installations must rotate their historical demo credentials.
 
 -- 2. CUSTOMERS TABLE
 CREATE TABLE IF NOT EXISTS customers (
