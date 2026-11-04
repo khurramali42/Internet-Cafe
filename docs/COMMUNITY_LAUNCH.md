@@ -1,0 +1,58 @@
+# Community Launch Kit — Speedy Cafe (development preview)
+
+Repository: https://github.com/khurramali42/Internet-Cafe
+
+**Use these messages for relevant communities only, after reading their posting rules.** The current release is for local testing and developer feedback. Do **not** advertise it as secure, production-ready, or ready for real customer data.
+
+## Reddit / SideProject (English)
+
+**Title:** I built a React + PHP Internet Cafe Management dashboard, looking for feedback from cafe operators
+
+I've been building Speedy Cafe, a browser-based dashboard for gaming lounges, cyber cafes and PC cabins.
+
+It includes a PC availability dashboard, session timers and billing, customer records, inventory, repair tickets, reporting and an optional PHP/MySQL sync prototype. The frontend can be explored locally with demo data.
+
+It's an **early-stage development preview**, not production-ready. I'm currently working through authentication and backend security before inviting live businesses to use it.
+
+I'd especially value feedback from people who run a PC gaming venue: what is missing from your daily operations?
+
+Code & local setup: https://github.com/khurramali42/Internet-Cafe
+
+## DEV Community article outline
+
+**Title:** Building an Internet Cafe Dashboard with React, TypeScript and PHP
+
+- Why timed computer sessions and billing are different from a generic POS.
+- How the cabin/session dashboard is structured.
+- How the local-storage demo works.
+- The PHP/MySQL sync prototype and limitations.
+- Security tasks still required for a production launch.
+- Invite developer feedback and link the repository.
+
+Suggested tags (verify platform rules): `react`, `typescript`, `php`, `showdev`.
+
+## LinkedIn / business-owner outreach
+
+I'm looking for feedback from internet cafe and gaming-lounge operators on a new software project, **Speedy Cafe**. It covers PC cabin status, session billing, customers, inventory and maintenance. It's currently a local-test development preview, not yet suitable for live customer data. If you manage a gaming venue, which task currently takes the most time? Project: https://github.com/khurramali42/Internet-Cafe
+
+## Urdu / Roman Urdu Facebook post
+
+Internet cafe ya gaming zone chalate hain? Main **Speedy Cafe** naam ka management dashboard develop kar raha hoon. Ismein PC/cabin status, session timer, billing, customer records, inventory aur maintenance management ke features hain. Abhi yeh **testing/development version** hai, live customer data ke liye ready nahi. Cafe owners aur developers se feedback chahiye ke daily operations mein kaunsi feature sab se zaroori hogi.
+
+GitHub: https://github.com/khurramali42/Internet-Cafe
+
+## Where to share (after security and demo improvements)
+
+1. GitHub topics: `internet-cafe`, `internet-cafe-management`, `gaming-center`, `react`, `typescript`, `php`, `mysql`. Add through the repository About section.
+2. Reddit r/SideProject, only if rules allow this kind of post.
+3. DEV Community as a technical build write-up.
+4. Targeted LinkedIn, Facebook gaming-cafe owner communities, and 1:1 outreach to operators.
+5. Product Hunt and Show HN later, when a safe runnable public demo and screenshots are available.
+
+## Before publishing elsewhere
+
+- Remove public deployment security blockers.
+- Record a short screen capture with **fictional** data.
+- Add a few annotated screenshots.
+- Add an explicit software license if the owner wants others to reuse or contribute.
+- Provide a demo link with a clear privacy/security notice.
