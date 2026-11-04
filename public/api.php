@@ -38,8 +38,11 @@ function validate_password(string $password): void {
 }
 function ensure_origin(): void {
     $origin = $_SERVER['HTTP_ORIGIN'] ?? '';
-    $expected = rtrim((string) getenv('SPEEDY_ALLOWED_ORIGIN'), '/');
-    if ($origin !== '' && ($expected === '' || !hash_equals($expected, $origin))) {
+    if ($origin === '') return;
+    $scheme = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
+    $self = $scheme . '://' . ($_SERVER['HTTP_HOST'] ?? '');
+    $allowed = rtrim((string) getenv('SPEEDY_ALLOWED_ORIGIN'), '/');
+    if (!hash_equals($self, $origin) && ($allowed === '' || !hash_equals($allowed, $origin))) {
         respond(403, ['error' => 'Origin not allowed']);
     }
 }
