@@ -1,0 +1,57 @@
+name: Capture Public Demo Screenshots
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/demo-screenshots.yml'
+      - 'scripts/capture-screenshots.mjs'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  capture:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Install dependencies
+        run: |
+          npm ci
+          npm install --no-save playwright
+          npx playwright install --with-deps chromium
+      - name: Launch isolated local demo
+        run: |
+          npm run dev -- --host 127.0.0.1 --port 4173 > /tmp/speedy-cafe-vite.log 2>&1 &
+          for attempt in $(seq 1 45); do
+            if curl -fsS http://127.0.0.1:4173/ >/dev/null; then exit 0; fi
+            sleep 2
+          done
+          cat /tmp/speedy-cafe-vite.log
+          exit 1
+      - name: Capture genuine browser screenshots
+        run: node scripts/capture-screenshots.mjs
+      - name: Upload images as workflow artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: speedy-cafe-screenshots
+          path: docs/screenshots/*.png
+          if-no-files-found: ignore
+      - name: Commit public screenshots
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add docs/screenshots/*.png
+          if git diff --cached --quiet; then
+            echo "No screenshot changes."
+          else
+            git commit -m "docs: capture real demo screenshots"
+            git push
+          fi
