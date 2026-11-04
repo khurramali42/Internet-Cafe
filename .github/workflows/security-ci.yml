@@ -1,0 +1,39 @@
+name: Security Change Validation
+
+on:
+  push:
+    branches:
+      - security/server-auth-hardening
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  frontend-build:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+
+  php-syntax:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check PHP syntax
+        run: |
+          php -l public/api.php
+          php -l scripts/bootstrap-admin.php
+      - name: Guard against accidentally reintroducing demo DB credentials
+        run: |
+          if grep -Eq "INSERT IGNORE INTO users|Access-Control-Allow-Origin: \*" database.sql public/api.php; then
+            echo "Unsafe seeded users or wildcard origin detected"
+            exit 1
+          fi
