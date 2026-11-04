@@ -46,4 +46,17 @@ code="$(curl -sS -b "$cookie.staff" -o /tmp/forbidden.json -w '%{http_code}' -X 
   --data '{"id":"u-admin"}' "$base?action=delete_user")"
 test "$code" = 403 || { echo "FAIL staff authorization: $code"; exit 1; }
 rm -f "$cookie.staff"
+
+# Rate limiter must not be bypassable by opening a fresh session each attempt.
+for i in 1 2 3 4 5; do
+  code="$(curl -sS -o /tmp/throttle.json -w '%{http_code}' -X POST \
+    -H 'Content-Type: application/json' \
+    --data '{"username":"unregistered_rate_limit","password":"badpass"}' "$base?action=login")"
+  test "$code" = 401 || { echo "FAIL initial rate-limit attempt $i: $code"; exit 1; }
+done
+code="$(curl -sS -o /tmp/throttled.json -w '%{http_code}' -X POST \
+  -H 'Content-Type: application/json' \
+  --data '{"username":"unregistered_rate_limit","password":"badpass"}' "$base?action=login")"
+test "$code" = 429 || { echo "FAIL persistent login throttling: $code"; exit 1; }
+
 echo 'PASS: anonymous access, login, password verification, CSRF, origin, admin creation and role permissions'
