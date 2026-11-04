@@ -35,10 +35,11 @@
 ## Migrating an existing database
 
 1. Back up the database before making any changes.
-2. The previous demo schema inserted `admin/123` as plaintext. The new API **rejects plaintext passwords**. Run the bootstrap script to replace the admin hash with a strong password.
-3. Existing staff plaintext credentials will no longer work. Have an authenticated administrator reset every staff account to a new strong password. Do **not** publish the old credentials or attempt to carry plaintext passwords forward.
-4. Verify the `users.passwordHash` field stores a hash rather than the original password.
-5. Deploy the backend and frontend version together. Old frontend code is incompatible with the protected API.
+2. Apply the additive [login-throttle migration](../migrations/security_login_attempts.sql) to an existing database before deploying the protected API.
+3. The previous demo schema inserted `admin/123` as plaintext. The new API **rejects plaintext passwords**. Run the bootstrap script to replace the admin hash with a strong password.
+4. Existing staff plaintext credentials will no longer work. Have an authenticated administrator reset every staff account to a new strong password. Do **not** publish the old credentials or attempt to carry plaintext passwords forward.
+5. Verify the `users.passwordHash` field stores a hash rather than the original password.
+6. Deploy the backend and frontend version together. Old frontend code is incompatible with the protected API.
 
 ## Local development with PHP
 
@@ -49,7 +50,7 @@
 
 ## Current security limitations
 
-- Login throttling is currently tied to a session cookie and is **not sufficient** against distributed credential stuffing. Add a shared-store (DB/Redis) rate limiter or a properly configured web application firewall.
+- Login failures are throttled through a shared MySQL table per account/IP fingerprint. Distributed credential stuffing, proxy abuse and account enumeration still need web-edge rate limiting, observability and abuse monitoring.
 - The app currently uses client-side optimistic data updates. The UI may temporarily display an uncommitted change if the API rejects a request. Add authenticated persistence acknowledgments, reconciliation and multi-user conflict handling before relying on it for financial operations.
 - Additional work is needed for detailed input/schema validation, least-privilege database grants, automatic backups, session retention policy, monitoring, and independent penetration testing.
 - User provisioning and the default offline demonstration remain development features. Keep the local demo away from real data.
