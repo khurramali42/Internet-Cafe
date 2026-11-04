@@ -50,9 +50,26 @@ Open the URL Vite prints in the terminal. To explore the local demo UI, use `adm
 | Prototype backend | PHP, PDO |
 | Data store | MySQL and browser LocalStorage (demo) |
 
-## Screenshots and demo
+## Screenshots (local fictional demo data)
 
-A public demo and screenshots have not yet been verified. Contributors are welcome to propose a **sanitized** demonstration environment that uses fictional data only.
+The screenshots below were automatically captured from the running React application in a clean browser using built-in fictional demo data. They do **not** imply production security or a hosted live demo.
+
+### Dashboard
+![Speedy Cafe cabin dashboard](docs/screenshots/02-dashboard.png)
+
+### Customer management
+![Speedy Cafe customers screen](docs/screenshots/03-customers.png)
+
+### Inventory / stock
+![Speedy Cafe inventory screen](docs/screenshots/04-inventory.png)
+
+### Reports
+![Speedy Cafe financial reports](docs/screenshots/05-reports.png)
+
+### Login
+![Speedy Cafe demo login](docs/screenshots/01-login.png)
+
+Screenshots are reproducible via the [GitHub Actions capture workflow](.github/workflows/demo-screenshots.yml). A safe public hosted demo has not yet been verified.
 
 ## Project status and contributing
 
