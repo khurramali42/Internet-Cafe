@@ -67,6 +67,10 @@ jobs:
           --health-timeout=5s
           --health-retries=10
     env:
+      SPEEDY_DEPLOYMENT_MODE: local
+      SPEEDY_PUBLIC_ORIGIN: http://localhost:8080
+      SPEEDY_LOCAL_HTTP: "1"
+      SPEEDY_TLS_TERMINATED_BY_PROXY: "0"
       SPEEDY_DB_HOST: 127.0.0.1
       SPEEDY_DB_NAME: speedy_cafe
       SPEEDY_DB_USER: root
