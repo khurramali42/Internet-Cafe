@@ -1,0 +1,27 @@
+name: Feature request
+description: Suggest a new workflow for internet cafe operators
+title: "[Feature]: "
+body:
+  - type: textarea
+    id: need
+    attributes:
+      label: Which real operator workflow needs improvement?
+      description: Do not include private user or financial records.
+    validations:
+      required: true
+  - type: dropdown
+    id: mode
+    attributes:
+      label: Target deployment
+      options:
+        - Both local and hosted
+        - Local only
+        - Hosted single cafe
+        - Multi-tenant SaaS proposal
+    validations:
+      required: true
+  - type: textarea
+    id: impact
+    attributes:
+      label: Data, security and migration impact
+      description: Explain any permissions, payments, backups, concurrency or database changes.

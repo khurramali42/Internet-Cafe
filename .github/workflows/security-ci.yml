@@ -5,6 +5,7 @@ on:
     branches:
       - security/server-auth-hardening
       - feature/local-hosted-deployment
+      - release/database-recovery-hardening
       - fix/atomic-cafe-billing
   pull_request:
     branches:
@@ -25,6 +26,16 @@ jobs:
       - run: npm ci
       - name: Check English-only interface and documentation
         run: node scripts/check-english-only.mjs
+      - name: Parse Windows quick installer
+        shell: pwsh
+        run: |
+          $tokens = $null
+          $errors = $null
+          [System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path scripts/install-local.ps1), [ref]$tokens, [ref]$errors) | Out-Null
+          if ($errors.Count -gt 0) {
+            $errors | ForEach-Object { Write-Error $_.ToString() }
+            exit 1
+          }
       - run: npm run build
 
   php-syntax:
@@ -35,6 +46,7 @@ jobs:
         run: |
           php -l public/api.php
           php -l public/billing.php
+          php -l scripts/migrate-financial-schema.php
           php -l scripts/bootstrap-admin.php
           if grep -n 'getJsonInput' public/api.php; then
             echo 'Legacy request parser reference remains'
@@ -104,6 +116,16 @@ jobs:
         run: bash scripts/security-smoke.sh
       - name: Test atomic billing, idempotency and customer ledger
         run: bash scripts/billing-smoke.sh
+      - name: Validate additive financial migration is repeatable
+        env:
+          SPEEDY_MIGRATION_BACKUP_CONFIRMED: "1"
+        run: |
+          php scripts/migrate-financial-schema.php
+          php scripts/migrate-financial-schema.php
+      - name: Verify disposable MySQL backup and restore
+        env:
+          SPEEDY_DISPOSABLE_RESTORE_DRILL: "1"
+        run: bash scripts/ci-restore-drill.sh
 
   deployment-config:
     runs-on: ubuntu-24.04
@@ -118,6 +140,12 @@ jobs:
           docker compose --env-file deploy/.env.template -f deploy/hosted.compose.yml config --quiet
       - name: Build the shared frontend and PHP image
         run: docker build -t speedy-cafe:ci .
+      - name: Validate public HTTPS reverse proxy Caddy configuration
+        run: |
+          docker run --rm -e SPEEDY_DOMAIN=example.invalid \
+            -v "$PWD/deploy/Caddyfile:/etc/caddy/Caddyfile:ro" caddy:2 \
+            caddy validate --config /etc/caddy/Caddyfile
+
 
   local-stack-smoke:
     runs-on: ubuntu-24.04
@@ -137,6 +165,15 @@ jobs:
           grep -q '"user":null' /tmp/speedy-status.json
           code="$(curl -s -o /tmp/speedy-init.json -w '%{http_code}' http://127.0.0.1:8080/api.php?action=init)"
           test "$code" = "401"
+      - name: Verify application DB user cannot create or alter tables
+        run: |
+          docker compose -f deploy/local.compose.yml exec -T database sh -c \
+            'MYSQL_PWD="$MYSQL_PASSWORD" mysql -uspeedy_app speedy_cafe -e "SELECT COUNT(*) FROM customers"'
+          if docker compose -f deploy/local.compose.yml exec -T database sh -c \
+            'MYSQL_PWD="$MYSQL_PASSWORD" mysql -uspeedy_app speedy_cafe -e "CREATE TABLE should_not_be_allowed (id INT)"'; then
+            echo "Application database user has dangerous schema privileges"
+            exit 1
+          fi
       - name: Diagnose local containers on failure
         if: failure()
         run: docker compose -f deploy/local.compose.yml logs --no-color --tail=100

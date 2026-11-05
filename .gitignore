@@ -30,3 +30,12 @@ dist-ssr
 !.env.production.example
 *.pem
 *.key
+
+# Private databases, backups, and restore artifacts (customer/financial data)
+backups/
+*.sql.gz
+*.sql.bak
+*.dump
+*.db
+*.sqlite
+*.sqlite3
