@@ -2,6 +2,8 @@
 
 > **Review and test before exposing to real customers.** This branch introduces server authentication and permission controls, but is not a complete independent security audit. Keep the project private/local until deployment is validated.
 
+> **Updated deployment requirement:** Use [the local and hosted Docker installation guide](DUAL_DEPLOYMENT.md) for supported runtime configurations. The API now requires `SPEEDY_PUBLIC_ORIGIN` and deployment mode `SPEEDY_DEPLOYMENT_MODE=local|hosted`. Local HTTP also requires `SPEEDY_LOCAL_HTTP=1` and an explicit loopback origin. A hosted reverse proxy must be private to the app and set `X-Forwarded-Proto: https` with `SPEEDY_TLS_TERMINATED_BY_PROXY=1`. Do not use a shared database for multiple cafes.
+
 ## Architecture and modes
 
 - **Isolated demo (default):** `VITE_API_URL` is unset. Fictional customer data and demo credentials are stored in browser LocalStorage. Nothing syncs to a server. Do not mistake this for production authentication.
