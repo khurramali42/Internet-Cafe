@@ -13,5 +13,6 @@ COPY --from=frontend /work/dist/ /var/www/html/
 COPY public/api.php /var/www/html/api.php
 COPY public/billing.php /var/www/html/billing.php
 COPY scripts/bootstrap-admin.php /opt/speedy/scripts/bootstrap-admin.php
-RUN chown -R www-data:www-data /var/www/html && chmod 750 /opt/speedy/scripts/bootstrap-admin.php
+COPY scripts/migrate-financial-schema.php /opt/speedy/scripts/migrate-financial-schema.php
+RUN chown -R www-data:www-data /var/www/html && chmod 750 /opt/speedy/scripts/bootstrap-admin.php /opt/speedy/scripts/migrate-financial-schema.php
 EXPOSE 80
