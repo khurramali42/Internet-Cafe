@@ -31,6 +31,10 @@ jobs:
         run: |
           php -l public/api.php
           php -l scripts/bootstrap-admin.php
+          if grep -n 'getJsonInput' public/api.php; then
+            echo 'Legacy request parser reference remains'
+            exit 1
+          fi
       - name: Guard against accidentally reintroducing demo DB credentials
         run: |
           if grep -Eq "INSERT IGNORE INTO users|Access-Control-Allow-Origin: \*" database.sql public/api.php; then
