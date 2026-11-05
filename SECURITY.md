@@ -15,11 +15,14 @@
 ## Known limitations requiring review
 
 - The **fictional local browser demo** intentionally uses client-side logins with sample credentials; **this is not production authentication**.
-- The current server API still accepts operational amounts and session details supplied by the client. Independently verify pricing, totals, timestamps, permission boundaries, transaction consistency and simultaneous staff edits on the server before financial use.
-- Some frontend state updates are optimistic and may appear successful when a server request fails. Production operation requires error feedback, reconciliation and retry logic.
-- Input field validation, backup recovery, least-privilege DB credentials, production monitoring, account/session policies and a live hosting security review remain deployment requirements.
+- Checkout, holds, cabin moves, balance settlements and historical manual billing now have transactional server routes, and the frontend waits for server confirmation. **Some other operational UI state remains optimistic**; end-to-end failure handling, refund/reversal flows and reconciliation still require review.
+- Manual billing is an administrator override; authenticated operators should reconcile such entries, discounts and business-specific tax rules. Formal invoice and journal balancing are not implemented.
+- The checkout/settlement integration tests use disposable data. Independent load/concurrency testing and real data migration remain outstanding.
+- The new database schema includes check constraints and customer foreign keys. Existing installations require the backup-gated CLI migration, after orphan/invalid record reconciliation. Secure backup scheduling, independent restore drills, least-privilege DB grants, monitoring and live hosting review remain installation requirements.
 - The password recovery interface is demo-only and does not send a real reset email.
 - Passing the repository's automated CI tests does not prove real-world deployment security.
+
+See [financial billing guidance](docs/BILLING_INTEGRITY.md) and the [public release checklist](docs/PUBLIC_RELEASE_CHECKLIST.md) for precise limitations.
 
 ## Secure deployment precautions
 
