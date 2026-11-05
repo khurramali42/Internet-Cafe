@@ -326,6 +326,13 @@ try {
 
         case 'sync_cabin':
             $d = input();
+            if (!empty($d['currentSessionId'])) respond(403, ['error' => 'Use authenticated session operations']);
+            $currentCabin = $pdo->prepare('SELECT currentSessionId FROM cabins WHERE id=?');
+            $currentCabin->execute([required_text($d, 'id', 50)]);
+            $activeSession = $currentCabin->fetchColumn();
+            if ($activeSession !== false && $activeSession !== null) {
+                respond(409, ['error' => 'An active cabin must be changed through session operations']);
+            }
             $stmt = $pdo->prepare("INSERT INTO cabins (id, name, status, currentSessionId, statusReason, expectedFix) VALUES (?, ?, ?, ?, ?, ?) 
                 ON DUPLICATE KEY UPDATE status=?, currentSessionId=?, statusReason=?, expectedFix=?");
             $stmt->execute([
@@ -375,6 +382,16 @@ try {
         case 'sync_transaction':
             $d = input();
             if (($d['type'] ?? null) === 'PAYMENT') respond(403, ['error' => 'Payments require a billing operation']);
+            $existingTx = $pdo->prepare('SELECT * FROM transactions WHERE id=?');
+            $existingTx->execute([required_text($d, 'id', 50)]);
+            $priorTx = $existingTx->fetch();
+            if ($priorTx) {
+                if ($priorTx['type'] !== ($d['type'] ?? '') || abs((float)$priorTx['amount']-(float)($d['amount'] ?? -1))>0.001
+                    || $priorTx['description'] !== ($d['description'] ?? '')) {
+                    respond(409, ['error' => 'Transaction already exists with different details']);
+                }
+                respond(200, ['status'=>'ok', 'replayed'=>true]);
+            }
             $d['amount'] = nonnegative_amount($d, 'amount');
             if (!in_array($d['type'] ?? null, ['PAYMENT', 'SALE', 'EXPENSE'], true)) {
                 respond(422, ['error' => 'Invalid transaction type']);
