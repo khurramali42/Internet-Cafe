@@ -25,6 +25,12 @@ The default build is an **isolated fictional demo**. To connect to a real PHP/My
 
 **Do not copy demo credentials into a real deployment.** Before upgrading an existing install, back up the database and review the [secure deployment and credential migration guide](docs/SECURE_DEPLOYMENT.md). The older database schema used plaintext seeded passwords; these no longer work against the protected API.
 
+## Server-authoritative billing (local and hosted)
+
+Authenticated PHP/MySQL deployments use atomic check-in, session holds, checkout and outstanding-balance settlement. Payment writes wait for database confirmation, replayed checkouts cannot charge twice, and cash balance totals cannot be directly overwritten from the browser. See the [billing integrity and safe-upgrade guide](docs/BILLING_INTEGRITY.md).
+
+This improvement does **not** certify the software as an accounting/POS system. Existing records created by older insecure versions should be reconciled before an upgrade, and hosted deployments require real-world validation.
+
 ## Install locally or host one cafe online
 
 The same frontend and authenticated PHP/MySQL backend now have two reproducible Docker configurations:

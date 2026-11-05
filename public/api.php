@@ -227,6 +227,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 $role = $authUser['role'];
+require_once __DIR__ . '/billing.php';
+handle_billing($action, $pdo, $authUser);
+
 if ($action === 'change_password') {
     if ($_SERVER['REQUEST_METHOD'] !== 'POST') respond(405, ['error' => 'POST required']);
     $d = input();
@@ -323,16 +326,35 @@ try {
 
         case 'sync_cabin':
             $d = input();
+            if (!empty($d['currentSessionId'])) respond(403, ['error' => 'Use authenticated session operations']);
+            if (!in_array($d['status'] ?? null,
+                ['AVAILABLE','OCCUPIED','ON_HOLD','MAINTENANCE','OUT_OF_SERVICE'], true)) {
+                respond(422, ['error' => 'Invalid cabin status']);
+            }
+            if (in_array($d['status'], ['OCCUPIED','ON_HOLD'], true)) {
+                respond(403, ['error' => 'Cabin occupancy must be managed by session operations']);
+            }
+            $pdo->beginTransaction();
+            $currentCabin = $pdo->prepare('SELECT currentSessionId FROM cabins WHERE id=? FOR UPDATE');
+            $currentCabin->execute([required_text($d, 'id', 50)]);
+            $activeSession = $currentCabin->fetchColumn();
+            if ($activeSession !== false && $activeSession !== null) {
+                billing_fail($pdo, 409, 'An active cabin must be changed through session operations');
+            }
             $stmt = $pdo->prepare("INSERT INTO cabins (id, name, status, currentSessionId, statusReason, expectedFix) VALUES (?, ?, ?, ?, ?, ?) 
                 ON DUPLICATE KEY UPDATE status=?, currentSessionId=?, statusReason=?, expectedFix=?");
             $stmt->execute([
                 $d['id'], $d['name'], $d['status'], $d['currentSessionId'] ?? null, $d['statusReason'] ?? null, $d['expectedFix'] ?? null,
                 $d['status'], $d['currentSessionId'] ?? null, $d['statusReason'] ?? null, $d['expectedFix'] ?? null
             ]);
+            $pdo->commit();
             echo json_encode(['status'=>'ok']);
             break;
 
         case 'sync_session':
+            // Block legacy client-authoritative billing writes. All live session changes
+            // must go through start_session/toggle_session_hold/checkout_session.
+            respond(403, ['error' => 'Use authoritative session operations']);
             $d = input();
             $d['ratePerHour'] = nonnegative_amount($d, 'ratePerHour');
             $d['amountDue'] = nonnegative_amount($d, 'amountDue');
@@ -357,27 +379,37 @@ try {
         case 'sync_customer':
             $d = input();
             validate_business_input('sync_customer', $d);
-            $stmt = $pdo->prepare("INSERT INTO customers (id, name, contact, remarks, totalSpent, outstandingBalance) VALUES (?, ?, ?, ?, ?, ?)
-                ON DUPLICATE KEY UPDATE name=?, contact=?, remarks=?, totalSpent=?, outstandingBalance=?");
-            $stmt->execute([
-                $d['id'], $d['name'], $d['contact'], $d['remarks']??'', $d['totalSpent'], $d['outstandingBalance'],
-                $d['name'], $d['contact'], $d['remarks']??'', $d['totalSpent'], $d['outstandingBalance']
-            ]);
+            // Client may edit contact metadata, never balances or lifetime spend.
+            $d['totalSpent'] = 0;
+            $d['outstandingBalance'] = 0;
+            $stmt = $pdo->prepare("INSERT INTO customers (id, name, contact, remarks, totalSpent, outstandingBalance) VALUES (?, ?, ?, ?, 0, 0)
+                ON DUPLICATE KEY UPDATE name=VALUES(name), contact=VALUES(contact), remarks=VALUES(remarks)");
+            $stmt->execute([$d['id'], $d['name'], $d['contact'], $d['remarks']??'']);
             echo json_encode(['status'=>'ok']);
             break;
 
         case 'sync_transaction':
             $d = input();
+            if (($d['type'] ?? null) === 'PAYMENT') respond(403, ['error' => 'Payments require a billing operation']);
+            $existingTx = $pdo->prepare('SELECT * FROM transactions WHERE id=?');
+            $existingTx->execute([required_text($d, 'id', 50)]);
+            $priorTx = $existingTx->fetch();
+            if ($priorTx) {
+                if ($priorTx['type'] !== ($d['type'] ?? '') || abs((float)$priorTx['amount']-(float)($d['amount'] ?? -1))>0.001
+                    || $priorTx['description'] !== ($d['description'] ?? '')) {
+                    respond(409, ['error' => 'Transaction already exists with different details']);
+                }
+                respond(200, ['status'=>'ok', 'replayed'=>true]);
+            }
             $d['amount'] = nonnegative_amount($d, 'amount');
             if (!in_array($d['type'] ?? null, ['PAYMENT', 'SALE', 'EXPENSE'], true)) {
                 respond(422, ['error' => 'Invalid transaction type']);
             }
             validate_business_input('sync_transaction', $d);
             $stmt = $pdo->prepare("INSERT INTO transactions (id, type, amount, date, description, category, relatedId, customerId, isManual) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-                ON DUPLICATE KEY UPDATE type=?, amount=?, date=?, description=?, category=?, relatedId=?, customerId=?");
+                ");
             $stmt->execute([
-                $d['id'], $d['type'], $d['amount'], $d['date'], $d['description'], $d['category']??'', $d['relatedId']??null, $d['customerId']??null, $d['isManual']?1:0,
-                $d['type'], $d['amount'], $d['date'], $d['description'], $d['category']??'', $d['relatedId']??null, $d['customerId']??null
+                $d['id'], $d['type'], $d['amount'], $d['date'], $d['description'], $d['category']??'', $d['relatedId']??null, $d['customerId']??null, !empty($d['isManual'])?1:0
             ]);
             echo json_encode(['status'=>'ok']);
             break;

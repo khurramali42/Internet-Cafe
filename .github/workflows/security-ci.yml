@@ -5,6 +5,7 @@ on:
     branches:
       - security/server-auth-hardening
       - feature/local-hosted-deployment
+      - fix/atomic-cafe-billing
   pull_request:
     branches:
       - main
@@ -33,6 +34,7 @@ jobs:
       - name: Check PHP syntax
         run: |
           php -l public/api.php
+          php -l public/billing.php
           php -l scripts/bootstrap-admin.php
           if grep -n 'getJsonInput' public/api.php; then
             echo 'Legacy request parser reference remains'
@@ -100,6 +102,8 @@ jobs:
           exit 1
       - name: Test authentication, CSRF and role authorization
         run: bash scripts/security-smoke.sh
+      - name: Test atomic billing, idempotency and customer ledger
+        run: bash scripts/billing-smoke.sh
 
   deployment-config:
     runs-on: ubuntu-24.04

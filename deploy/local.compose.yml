@@ -32,6 +32,7 @@ services:
       SPEEDY_PUBLIC_ORIGIN: http://localhost:8080
       SPEEDY_LOCAL_HTTP: "1"
       SPEEDY_TLS_TERMINATED_BY_PROXY: "0"
+      SPEEDY_ALLOWED_HOURLY_RATES: ${SPEEDY_ALLOWED_HOURLY_RATES:-100,150,200,250,300}
       SPEEDY_DB_HOST: database
       SPEEDY_DB_NAME: speedy_cafe
       SPEEDY_DB_USER: speedy_app

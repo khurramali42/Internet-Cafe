@@ -1,5 +1,5 @@
 
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { useAppStore } from '../store';
 import { Search, DollarSign, User, History } from 'lucide-react';
 import { CustomerHistoryModal } from './ActionModals';
@@ -17,28 +17,41 @@ export const Customers: React.FC = () => {
     c.contact.includes(searchTerm)
   );
 
-  const handleSettleBalance = (customerId: string) => {
+  const { settleBalance } = useAppStore();
+  const [settling, setSettling] = useState(false);
+  const [settlementError, setSettlementError] = useState('');
+  const settlementKey = useRef<string | null>(null);
+  const settlementPending = useRef(false);
+
+  const handleSettleBalance = async (customerId: string) => {
     const cust = customers.find(c => c.id === customerId);
-    if (!cust || settleAmount <= 0) return;
+    if (!cust || settleAmount <= 0 || settlementPending.current) return;
 
-    // Create transaction with CustomerID
-    addTransaction({
-        type: 'PAYMENT',
-        amount: settleAmount,
-        description: `Balance Settlement - ${cust.name}`,
-        customerId: cust.id,
-        category: 'Settlement'
-    });
-
-    // Update customer
-    updateCustomer({
-        ...cust,
-        outstandingBalance: cust.outstandingBalance - settleAmount
-    });
-
+    if ((import.meta.env.VITE_API_URL || '').trim()) {
+        const key = settlementKey.current || crypto.randomUUID();
+        settlementKey.current = key;
+        settlementPending.current = true;
+        setSettling(true);
+        setSettlementError('');
+        const saved = await settleBalance(customerId, settleAmount, key);
+        settlementPending.current = false;
+        setSettling(false);
+        if (!saved) {
+            setSettlementError('Balance payment was not confirmed. Check the server record before retrying.');
+            return;
+        }
+    } else {
+        addTransaction({
+            type: 'PAYMENT', amount: settleAmount,
+            description: `Balance Settlement - ${cust.name}`,
+            customerId: cust.id, category: 'Settlement'
+        });
+        updateCustomer({ ...cust, outstandingBalance: cust.outstandingBalance - settleAmount });
+    }
     setSettleModalOpen(null);
     setSettleAmount(0);
     setSettleRemarks('');
+    settlementKey.current = null;
   };
 
   const activeCustomer = customers.find(c => c.id === historyModalId);
@@ -108,6 +121,8 @@ export const Customers: React.FC = () => {
                                 onClick={() => {
                                     setSettleModalOpen(customer.id);
                                     setSettleAmount(customer.outstandingBalance);
+                                    setSettlementError('');
+                                    settlementKey.current = null;
                                 }}
                                 className="text-blue-600 hover:text-blue-800 text-sm font-medium flex items-center gap-1"
                                 title="Settle Balance"
@@ -150,9 +165,11 @@ export const Customers: React.FC = () => {
                  onChange={e => setSettleRemarks(e.target.value)}
                />
 
+               {settlementError && <p role="alert" className="text-red-700 text-sm mb-2">{settlementError}</p>}
                <div className="flex justify-end gap-2">
                    <button onClick={() => setSettleModalOpen(null)} className="px-4 py-2 text-gray-500">Cancel</button>
-                   <button onClick={() => handleSettleBalance(settleModalOpen)} className="px-4 py-2 bg-blue-600 text-white rounded">Pay Now</button>
+                   <button disabled={settling}
+                                onClick={() => { void handleSettleBalance(settleModalOpen); }} className="px-4 py-2 bg-blue-600 text-white rounded">Pay Now</button>
                </div>
            </div>
         </div>

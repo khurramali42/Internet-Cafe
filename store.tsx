@@ -717,9 +717,29 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       logAction('ADMIN_PW_RESET', `Admin reset password for user: ${user.username}`);
   };
 
+  // Server mode never confirms a financial change before the DB commits.
+  // Reloading on success reconciles all React views with authoritative MySQL rows.
+  const authoritativeWrite = async (action: string, payload: any): Promise<boolean> => {
+      const result = await safeApiCall('POST', action, payload);
+      if (!result) {
+          setSyncFailure(true);
+          return false;
+      }
+      window.location.reload();
+      return true;
+  };
+
+  const settleBalance = async (customerId: string, paymentAmount: number, requestId: string): Promise<boolean> => {
+      if (!API_URL) return false;
+      return authoritativeWrite('settle_balance', { customerId, paymentAmount, requestId });
+  };
+
   // --- OPERATIONAL METHODS ---
 
-  const checkIn = (cabinId: string, customerId: string, rate: number) => {
+  const checkIn = async (cabinId: string, customerId: string, rate: number, newCustomer?: { name: string; contact: string }, requestId?: string): Promise<boolean> => {
+    if (API_URL) {
+        return authoritativeWrite('start_session', { requestId: requestId || crypto.randomUUID(), cabinId, customerId: newCustomer ? 'new' : customerId, ratePerHour: rate, newCustomer });
+    }
     const newSession: Session = {
       id: `sess-${Date.now()}`,
       cabinId,
@@ -734,27 +754,20 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       status: 'OPEN',
       createdBy: currentUser?.username || 'Unknown'
     };
-    
-    // Update Local State
     const newSessions = [...sessions, newSession];
     setSessions(newSessions);
     saveToLocal('sessions', newSessions);
-
-    const newCabins = cabins.map(c => {
-      if (c.id === cabinId) {
-          const updated = { ...c, status: CabinStatus.OCCUPIED, currentSessionId: newSession.id };
-          sync('sync_cabin', 'cabins', updated);
-          return updated;
-      }
-      return c;
-    });
+    const newCabins = cabins.map(c => c.id === cabinId ? { ...c, status: CabinStatus.OCCUPIED, currentSessionId: newSession.id } : c);
     setCabins(newCabins);
     saveToLocal('cabins', newCabins);
-
-    sync('sync_session', 'sessions', newSession);
+    return true;
   };
 
   const toggleHold = (sessionId: string) => {
+    if (API_URL) {
+        void authoritativeWrite('toggle_session_hold', { sessionId });
+        return;
+    }
     const session = sessions.find(s => s.id === sessionId);
     if (!session) return;
 
@@ -792,76 +805,50 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     saveToLocal('cabins', newCabins);
   };
 
-  const checkOut = (sessionId: string, paymentAmount: number) => {
+  const checkOut = async (sessionId: string, paymentAmount: number, discount = 0): Promise<boolean> => {
+    if (API_URL) {
+        return authoritativeWrite('checkout_session', { sessionId, paymentAmount, discount });
+    }
     const session = sessions.find(s => s.id === sessionId);
-    if (!session) return;
+    if (!session || session.status !== 'OPEN') return false;
     const outTime = Date.now();
     let totalHoldMs = 0;
     session.holds.forEach(h => { totalHoldMs += (h.end || outTime) - h.start; });
-    const totalDurationMs = outTime - session.inTime;
-    const effectiveMs = totalDurationMs - totalHoldMs;
-    const effectiveMinutes = Math.ceil(effectiveMs / 60000); 
-    const hours = effectiveMinutes / 60;
-    const amountDue = Math.ceil(hours * session.ratePerHour);
-
+    const effectiveMs = Math.max(0, outTime - session.inTime - totalHoldMs);
+    const effectiveMinutes = Math.ceil(effectiveMs / 60000);
+    const amountDue = Math.max(0, Math.ceil((effectiveMinutes / 60) * session.ratePerHour) - discount);
     const updatedSession: Session = {
-      ...session,
-      outTime,
-      totalHoldMinutes: totalHoldMs / 60000,
-      effectiveMinutes,
-      amountDue,
-      amountPaid: paymentAmount,
-      status: 'CLOSED'
+      ...session, outTime, totalHoldMinutes: Math.floor(totalHoldMs / 60000),
+      effectiveMinutes, amountDue, amountPaid: paymentAmount, status: 'CLOSED'
     };
-
     const newSessions = sessions.map(s => s.id === sessionId ? updatedSession : s);
     setSessions(newSessions);
     saveToLocal('sessions', newSessions);
-    sync('sync_session', 'sessions', updatedSession);
-
-    const newCabins = cabins.map(c => {
-        if(c.id === session.cabinId) {
-            const updated = { ...c, status: CabinStatus.AVAILABLE, currentSessionId: undefined };
-            sync('sync_cabin', 'cabins', updated);
-            return updated;
-        }
-        return c;
-    });
+    const newCabins = cabins.map(c => c.id === session.cabinId ? { ...c, status: CabinStatus.AVAILABLE, currentSessionId: undefined } : c);
     setCabins(newCabins);
     saveToLocal('cabins', newCabins);
-
-    const balance = amountDue - paymentAmount;
     const customer = customers.find(c => c.id === session.customerId);
-    if(customer) {
-        const updatedCust = { 
-            ...customer, 
-            totalSpent: customer.totalSpent + amountDue, 
-            outstandingBalance: customer.outstandingBalance + balance 
-        };
-        const newCustomers = customers.map(c => c.id === updatedCust.id ? updatedCust : c);
-        setCustomers(newCustomers);
-        saveToLocal('customers', newCustomers);
-        sync('sync_customer', 'customers', updatedCust);
+    if (customer) {
+        const updatedCustomer = { ...customer, totalSpent: customer.totalSpent + amountDue,
+            outstandingBalance: customer.outstandingBalance + amountDue - paymentAmount };
+        const next = customers.map(c => c.id === customer.id ? updatedCustomer : c);
+        setCustomers(next); saveToLocal('customers', next);
     }
-
     if (paymentAmount > 0) {
-      const newTx: Transaction = {
-        id: `tx-pay-${Date.now()}`,
-        type: 'PAYMENT',
-        amount: paymentAmount,
-        description: `Payment for Session ${sessionId}`,
-        relatedId: sessionId,
-        customerId: session.customerId,
-        date: Date.now()
-      };
-      const newTransactions = [...transactions, newTx];
-      setTransactions(newTransactions);
-      saveToLocal('transactions', newTransactions);
-      sync('sync_transaction', 'transactions', newTx);
+        const tx: Transaction = { id: `tx-pay-${Date.now()}`, type: 'PAYMENT',
+            amount: paymentAmount, description: `Payment for Session ${sessionId}`,
+            relatedId: sessionId, customerId: session.customerId, date: Date.now() };
+        const next = [...transactions, tx];
+        setTransactions(next); saveToLocal('transactions', next);
     }
+    return true;
   };
 
   const moveSession = (sessionId: string, targetCabinId: string) => {
+    if (API_URL) {
+        void authoritativeWrite('move_session', { sessionId, targetCabinId });
+        return;
+    }
     const session = sessions.find(s => s.id === sessionId);
     if (!session) return;
     const oldCabinId = session.cabinId;
@@ -953,14 +940,25 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     sync('sync_customer', 'customers', updated);
   };
 
-  const addTransaction = (t: Omit<Transaction, 'id' | 'date'> & { date?: number }) => {
-    const newT: Transaction = { ...t, id: `tx-${Date.now()}-${Math.floor(Math.random() * 1000)}`, date: t.date || Date.now() };
-    
-    const newTransactions = [...transactions, newT];
-    setTransactions(newTransactions);
-    saveToLocal('transactions', newTransactions);
-    sync('sync_transaction', 'transactions', newT);
+  const addTransaction = async (t: Omit<Transaction, 'id' | 'date'> & { date?: number }, requestId?: string): Promise<boolean> => {
+    if (API_URL) {
+        if (t.type === 'PAYMENT') {
+            setSyncFailure(true);
+            return false; // Payments require checkout or settlement, never arbitrary sync.
+        }
+        const id = `tx-${requestId || crypto.randomUUID()}`;
+        return authoritativeWrite('sync_transaction', { ...t, id, date: t.date || Date.now() });
+    }
+    const newT: Transaction = {
+        ...t, id: `tx-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+        date: t.date || Date.now()
+    };
+    const next = [...transactions, newT];
+    setTransactions(next);
+    saveToLocal('transactions', next);
+    return true;
   };
+
 
   const addInventoryItem = (item: Omit<InventoryItem, 'id'>) => {
     const newItem: InventoryItem = { ...item, id: `inv-${Date.now()}` };
@@ -985,7 +983,10 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     sync('delete_inventory', 'inventory', { id });
   };
 
-  const addManualRecord = (data: ManualRecordData) => {
+  const addManualRecord = async (data: ManualRecordData, requestId?: string): Promise<boolean> => {
+    if (API_URL) {
+        return authoritativeWrite('manual_session', { ...data, requestId: requestId || crypto.randomUUID() });
+    }
     let finalCustomerId = data.customerId;
     if (!finalCustomerId && data.newCustomer) {
       finalCustomerId = addCustomer({ name: data.newCustomer.name, contact: data.newCustomer.contact });
@@ -1048,6 +1049,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       saveToLocal('transactions', newTransactions);
       sync('sync_transaction', 'transactions', newTx);
     }
+    return true;
   };
 
   if(loading) {
@@ -1064,7 +1066,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       cabins, customers, sessions, transactions, repairs, inventory,
       users, currentUser, auditLogs,
       now, isOffline,
-      checkIn, checkOut, toggleHold, moveSession, markMaintenance, resolveMaintenance,
+      checkIn, checkOut, toggleHold, moveSession, settleBalance, markMaintenance, resolveMaintenance,
       addCustomer, updateCustomer, addTransaction, addInventoryItem, updateInventoryItem, deleteInventoryItem, addManualRecord,
       login, logout, changePassword, updateProfile,
       addUser, updateUser, deleteUser, adminResetPassword
