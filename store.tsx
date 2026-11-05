@@ -736,10 +736,9 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
   // --- OPERATIONAL METHODS ---
 
-  const checkIn = async (cabinId: string, customerId: string, rate: number, newCustomer?: { name: string; contact: string }): Promise<boolean> => {
+  const checkIn = async (cabinId: string, customerId: string, rate: number, newCustomer?: { name: string; contact: string }, requestId?: string): Promise<boolean> => {
     if (API_URL) {
-        const requestId = crypto.randomUUID();
-        return authoritativeWrite('start_session', { requestId, cabinId, customerId: newCustomer ? 'new' : customerId, ratePerHour: rate, newCustomer });
+        return authoritativeWrite('start_session', { requestId: requestId || crypto.randomUUID(), cabinId, customerId: newCustomer ? 'new' : customerId, ratePerHour: rate, newCustomer });
     }
     const newSession: Session = {
       id: `sess-${Date.now()}`,
@@ -984,9 +983,9 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     sync('delete_inventory', 'inventory', { id });
   };
 
-  const addManualRecord = async (data: ManualRecordData): Promise<boolean> => {
+  const addManualRecord = async (data: ManualRecordData, requestId?: string): Promise<boolean> => {
     if (API_URL) {
-        return authoritativeWrite('manual_session', { ...data, requestId: crypto.randomUUID() });
+        return authoritativeWrite('manual_session', { ...data, requestId: requestId || crypto.randomUUID() });
     }
     let finalCustomerId = data.customerId;
     if (!finalCustomerId && data.newCustomer) {
