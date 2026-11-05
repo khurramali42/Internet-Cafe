@@ -16,8 +16,8 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
         with:
           node-version: '22'
           cache: npm
@@ -39,7 +39,7 @@ jobs:
         run: node scripts/capture-screenshots.mjs
       - name: Upload images as workflow artifact
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: speedy-cafe-screenshots
           path: docs/screenshots/*.png
