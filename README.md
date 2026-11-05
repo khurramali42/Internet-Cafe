@@ -3,7 +3,7 @@
 
 A browser-based management project for internet cafes, gaming lounges, PC cabin businesses, and shared-workstation venues. Built with **React, TypeScript, Vite, PHP, and MySQL**.
 
-> **Development preview, not production-ready.** The current application uses demo credentials and client-side password checks, and the PHP sync API lacks server-side authentication/authorization. **Do not deploy publicly with real customer, payment, or employee information.** See [SECURITY.md](SECURITY.md).
+> **Development preview, not production-ready.** The browser-only demo uses fictional data and intentionally weak demo credentials. The optional PHP backend now includes server-side sessions, password hashing, CSRF, role checks, and login throttling, but full production deployment and business-data integrity have not been independently validated. **Do not put real customer or financial data in an unreviewed deployment.** See [SECURITY.md](SECURITY.md).
 
 ## What you can explore
 
@@ -13,13 +13,13 @@ A browser-based management project for internet cafes, gaming lounges, PC cabin 
 - **Operations:** Inventory, repair tickets, expenses, and transactions.
 - **Reporting:** Financial visualizations and audit-log UI.
 - **Local demo mode:** Browser-based storage lets you explore without a server.
-- **Optional database sync:** PHP/MySQL synchronization is included as a prototype, **not a production-secure backend**.
+- **Optional authenticated backend:** PHP/MySQL synchronization includes server-side login and session protection. Business data integrity and multi-user consistency still require production validation.
 
 ## Who it's for
 
 Cafe owners and operators who want to evaluate a management dashboard; developers interested in contributing to an internet cafe software project. This is an early-stage community project, not a tested point-of-sale or access-control solution.
 
-## Authenticated backend (security branch)
+## Authenticated backend (main branch)
 
 The default build is an **isolated fictional demo**. To connect to a real PHP/MySQL backend, configure `VITE_API_URL=/api.php`, provision a strong administrator using the CLI bootstrap script, and serve PHP and the frontend on the same HTTPS origin. The protected API uses server-side sessions, CSRF validation and role authorization.
 
@@ -38,14 +38,11 @@ npm run dev
 
 Open the URL Vite prints in the terminal. To explore the local demo UI, use `admin` / `123` (demonstration only; **never use this on a public deployment**).
 
-## Optional local PHP/MySQL prototype
+## Optional PHP/MySQL server setup
 
-1. Install XAMPP or another local PHP/MySQL environment and start Apache and MySQL.
-2. Import `database.sql` using phpMyAdmin to create the local `speedy_cafe` database.
-3. Put `public/api.php` under your PHP server's document root, e.g. `htdocs/speedy_cafe/api.php`.
-4. In the app Settings, set the prototype API URL to your local PHP endpoint and enable synchronization.
+Use the [Secure Deployment Guide](docs/SECURE_DEPLOYMENT.md) for a **new database** or migration from the historical insecure demo database. Configuration includes server-side environment variables, CLI admin provisioning with a 12+ character password, HTTPS and same-origin API hosting. Set `VITE_API_URL=/api.php` at frontend build time.
 
-**Security:** Run the PHP API only on a trusted local test environment. Do not expose the API to the internet until server-side authentication, authorization, password hashing and CORS controls have been implemented and tested. A static Vite hosting service does not execute PHP; the backend needs a separate PHP runtime.
+The **demo** and **authenticated server mode** are different operating modes. Merely enabling a setting in the demo does not turn it into a secure server deployment. The frontend build alone does not host PHP or MySQL.
 
 ## Technology
 
