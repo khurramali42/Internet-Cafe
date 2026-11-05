@@ -43,6 +43,18 @@ $checks = [
     'preflight' => 'SELECT COUNT(*) FROM inventory WHERE quantity < 0 OR cost < 0'
   ]
 ];
+$foreignKeys = [
+    'sessions' => [
+        'fk_sessions_customer' => 'FOREIGN KEY (customerId) REFERENCES customers(id) ON DELETE RESTRICT'
+    ],
+    'transactions' => [
+        'fk_transactions_customer' => 'FOREIGN KEY (customerId) REFERENCES customers(id) ON DELETE RESTRICT'
+    ]
+];
+$orphanQueries = [
+    'sessions' => 'SELECT COUNT(*) FROM sessions s LEFT JOIN customers c ON c.id=s.customerId WHERE s.customerId IS NOT NULL AND c.id IS NULL',
+    'transactions' => 'SELECT COUNT(*) FROM transactions t LEFT JOIN customers c ON c.id=t.customerId WHERE t.customerId IS NOT NULL AND c.id IS NULL'
+];
 $indexes = [
   'sessions' => [
     'idx_sessions_customer_time' => '(customerId, inTime)',
@@ -64,6 +76,10 @@ try {
             throw new RuntimeException("$table must be InnoDB before this migration. Review and convert it separately.");
         }
     }
+    foreach ($orphanQueries as $table => $sql) {
+        $orphanCount = (int)$pdo->query($sql)->fetchColumn();
+        if ($orphanCount > 0) throw new RuntimeException("$table has $orphanCount orphan customer references; reconcile manually first.");
+    }
     foreach ($checks as $table => $items) {
         foreach ($items as $constraint => $expression) {
             if ($constraint === 'preflight') continue;
@@ -82,6 +98,16 @@ try {
             if (!$present->fetchColumn()) {
                 $pdo->exec("CREATE INDEX `$index` ON `$table` $columns");
                 echo "Added $index on $table\n";
+            }
+        }
+    }
+    foreach ($foreignKeys as $table => $items) {
+        foreach ($items as $constraint => $definition) {
+            $stmt = $pdo->prepare('SELECT COUNT(*) FROM information_schema.referential_constraints WHERE constraint_schema=? AND table_name=? AND constraint_name=?');
+            $stmt->execute([$name,$table,$constraint]);
+            if (!$stmt->fetchColumn()) {
+                $pdo->exec("ALTER TABLE `$table` ADD CONSTRAINT `$constraint` $definition");
+                echo "Added $constraint on $table\n";
             }
         }
     }
