@@ -144,8 +144,8 @@ export interface AppContextType extends AppState {
   isOffline: boolean; // Added to track connection status
   
   // Operational Methods
-  checkIn: (cabinId: string, customerId: string, rate: number) => void;
-  checkOut: (sessionId: string, paymentAmount: number) => void;
+  checkIn: (cabinId: string, customerId: string, rate: number, newCustomer?: { name: string; contact: string }) => Promise<boolean>;
+  checkOut: (sessionId: string, paymentAmount: number, discount?: number) => Promise<boolean>;
   toggleHold: (sessionId: string) => void;
   moveSession: (sessionId: string, targetCabinId: string) => void;
   markMaintenance: (cabinId: string, reason: string, expectedFix?: string) => void;
@@ -156,7 +156,8 @@ export interface AppContextType extends AppState {
   addInventoryItem: (item: Omit<InventoryItem, 'id'>) => void;
   updateInventoryItem: (item: InventoryItem) => void;
   deleteInventoryItem: (id: string) => void;
-  addManualRecord: (data: ManualRecordData) => void;
+  addManualRecord: (data: ManualRecordData) => Promise<boolean>;
+  settleBalance: (customerId: string, paymentAmount: number, requestId: string) => Promise<boolean>;
   
   // Auth Methods
   login: (username: string, password: string) => Promise<boolean>;
