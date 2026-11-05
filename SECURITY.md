@@ -1,24 +1,34 @@
-# Security policy (development preview)
+# Security policy — development preview
 
-**Do not use this project in production or expose its current PHP API to the public internet.**
+**Do not treat this repository as production security certified.** Use fictional data for the demo and test new server installations before handling any real customer or financial records.
 
-## Known risks
+## Implemented on main
 
-- Demo credentials are documented, and the seed database contains a weak admin password.
-- Client-side login compares plaintext password values in browser state; password fields named `passwordHash` are **not** necessarily hashed.
-- `public/api.php` currently permits cross-origin requests broadly and has no server-side authentication or per-operation authorization; its endpoints may expose users, customers and financial data if hosted publicly.
-- Demo/local browser data is not a substitute for secure access control, encrypted backups, or a production database.
-- The password recovery UI simulates an email response, not a verified reset process.
+- PHP server-side login and session cookies.
+- Password hashing with `password_hash` / `password_verify`, replacing weak production seed credentials.
+- CSRF tokens, origin validation, HTTPS requirements, and server-enforced role checks for user management.
+- No anonymous access to customer, inventory or finance endpoints.
+- Server-side login failure throttling backed by MySQL.
+- Basic CI tests against a disposable MySQL database covering login, staff/admin checks, CSRF, origin blocking, customer/stock/transaction sync.
+- A CLI administrator bootstrap script; see [secure deployment instructions](docs/SECURE_DEPLOYMENT.md).
 
-## Before any real deployment
+## Known limitations requiring review
 
-1. Implement server-side sessions or signed authentication and **server-side role-based authorization** on every endpoint, including read, sync, delete, and administration operations.
-2. Store passwords using a proper password hashing algorithm (e.g. PHP `password_hash` and `password_verify`); remove seeded/default production credentials.
-3. Restrict CORS to approved origins, validate/sanitize all inputs, use least-privilege DB credentials, enable HTTPS, and configure rate limits.
-4. Stop returning raw DB errors and sensitive fields to unauthenticated users.
-5. Implement database backup/restore tests, audit controls, and tests covering access by unauthenticated/staff/admin accounts.
-6. Conduct a security review before any public launch.
+- The **fictional local browser demo** intentionally uses client-side logins with sample credentials; **this is not production authentication**.
+- The current server API still accepts operational amounts and session details supplied by the client. Independently verify pricing, totals, timestamps, permission boundaries, transaction consistency and simultaneous staff edits on the server before financial use.
+- Some frontend state updates are optimistic and may appear successful when a server request fails. Production operation requires error feedback, reconciliation and retry logic.
+- Input field validation, backup recovery, least-privilege DB credentials, production monitoring, account/session policies and a live hosting security review remain deployment requirements.
+- The password recovery interface is demo-only and does not send a real reset email.
+- Passing the repository's automated CI tests does not prove real-world deployment security.
 
-## Reporting security concerns
+## Secure deployment precautions
 
-Please **do not post exploit details or real customer records in public issues**. Contact the repository maintainer privately through their GitHub profile until a dedicated vulnerability reporting channel is configured.
+1. Serve PHP and the frontend on the **same HTTPS origin**, keeping database credentials outside the web root.
+2. Configure a dedicated restricted MySQL user (never the root account).
+3. Run the [database migration and account bootstrap](docs/SECURE_DEPLOYMENT.md) before switching any existing installation.
+4. Test admin/staff permissions, billing, inventory, concurrent sessions, backup restore and network failures using fictional data.
+5. Obtain an independent security review before inviting live businesses to process customer or payment information.
+
+## Report a security issue privately
+
+Do not publish exploits, credentials or real customer data in GitHub issues. Contact the repository owner privately through GitHub until a dedicated vulnerability-reporting channel is set up.
