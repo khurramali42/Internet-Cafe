@@ -13,6 +13,7 @@
 - [x] Private `.env` and `backups/` excluded from Git tracking
 - [x] Repeatable financial integrity migration with orphan-record and negative-balance preflight
 - [x] Disposable backup/restore verification within CI
+- [x] Least-privilege Docker app DB account on fresh volumes (SELECT/INSERT/UPDATE/DELETE only), validated in CI
 - [ ] Independent security and accounting review of deployment and business rules
 - [ ] Formal UX/accessibility testing across current browsers/devices
 - [ ] Sanitized public walkthrough video
@@ -42,7 +43,7 @@
 1. Verify backup exists and its restore works in a separate test environment.
 2. Confirm legacy customer balances and existing sessions have been reconciled.
 3. From the repository, with dedicated **migration-privileged** MySQL credentials in protected environment and `SPEEDY_MIGRATION_BACKUP_CONFIRMED=1`, run `php scripts/migrate-financial-schema.php`. The migration refuses orphan customer relationships and invalid monetary values. It never silently deletes or changes business rows.
-4. Run it a second time to verify idempotency, then revoke extra `ALTER`/schema privileges. The normal app account should only receive the minimum DML privileges it needs.
+4. Run it a second time to verify idempotency, then revoke extra `ALTER`/schema privileges. Fresh Docker volumes run `deploy/restrict-db-user.sql` during first database creation. **Existing volumes do not re-run init SQL**, so inspect their grants and manually restrict the application user after running any schema migration.
 5. Upgrade frontend and backend together, change admin credentials, and verify functionality with fake records before resuming operations.
 
 **No software can honestly be declared fully production-ready simply because tests pass in GitHub Actions.** The repository provides the software and reference deployment, but a cafe's real hosting, secret setup, backups, legal compliance and risk review are installation-specific.
