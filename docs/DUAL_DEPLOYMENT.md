@@ -36,6 +36,18 @@ Open **http://localhost:8080** only from the same PC. Docker binds port 8080 to 
 
 The database schema loads on first boot only for a **new empty volume**. It does not overwrite existing data on restart.
 
+### Recommended Windows quick installer
+
+Install and start Docker Desktop, then open PowerShell **inside the cloned repository folder**:
+
+```powershell
+.\\scripts\\install-local.ps1
+```
+
+This script creates random database secrets in a private `.env` (if one does not already exist), builds the local-only Docker stack, and offers an administrator password prompt. No fixed or default admin account password is shipped. Run as a regular user with Docker Desktop access. If PowerShell script execution is restricted, use the manual steps below rather than disabling your machine's security controls.
+
+For upgrades: this installer **does not** migrate existing databases or rotate staff credentials. Back up first and follow [the public release checklist](PUBLIC_RELEASE_CHECKLIST.md).
+
 ### Windows / Docker Desktop notes
 
 On Windows 10/11, install Docker Desktop with the WSL 2 backend, then open PowerShell in the repository folder. Copy `deploy/.env.template` to `.env`, fill the two blank database passwords, and run:
