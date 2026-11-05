@@ -1,0 +1,40 @@
+# Local, single-cafe installation. Do not expose the app or MySQL publicly.
+name: speedy-cafe-local
+services:
+  database:
+    image: mysql:8.0
+    restart: unless-stopped
+    environment:
+      MYSQL_DATABASE: speedy_cafe
+      MYSQL_USER: speedy_app
+      MYSQL_PASSWORD: ${SPEEDY_DB_PASSWORD:?Set SPEEDY_DB_PASSWORD in private .env}
+      MYSQL_ROOT_PASSWORD: ${SPEEDY_DB_ROOT_PASSWORD:?Set SPEEDY_DB_ROOT_PASSWORD in private .env}
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ../database.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "MYSQL_PWD=\"$$MYSQL_ROOT_PASSWORD\" mysqladmin ping -uroot --silent"]
+      interval: 10s
+      timeout: 5s
+      retries: 15
+  app:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    depends_on:
+      database:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:8080:80"
+    environment:
+      SPEEDY_DEPLOYMENT_MODE: local
+      SPEEDY_PUBLIC_ORIGIN: http://localhost:8080
+      SPEEDY_LOCAL_HTTP: "1"
+      SPEEDY_TLS_TERMINATED_BY_PROXY: "0"
+      SPEEDY_DB_HOST: database
+      SPEEDY_DB_NAME: speedy_cafe
+      SPEEDY_DB_USER: speedy_app
+      SPEEDY_DB_PASS: ${SPEEDY_DB_PASSWORD:?Set SPEEDY_DB_PASSWORD}
+volumes:
+  mysql_data:
