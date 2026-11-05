@@ -4,6 +4,8 @@ import { Customer, Session, Cabin, CabinStatus, Transaction } from '../types';
 import { X, UserPlus, Clock, Calculator, CreditCard, Wrench, AlertTriangle, FileText, Calendar, Search, History, PauseCircle, PlayCircle, CheckCircle, AlertCircle, ArrowUpCircle } from 'lucide-react';
 import { format } from 'date-fns';
 
+const API_SERVER_MODE = !!(import.meta.env.VITE_API_URL || '').trim();
+
 // --- Check In Modal ---
 
 interface CheckInModalProps {
@@ -22,19 +24,24 @@ export const CheckInModal: React.FC<CheckInModalProps> = ({ cabinId, isOpen, onC
 
   if (!isOpen) return null;
 
-  const handleCheckIn = () => {
-    let finalCustId = selectedCustomerId;
-    
-    if (isNewCustomer) {
-      if(!newCustName) return; 
-      finalCustId = addCustomer({ name: newCustName, contact: newCustContact });
-      setIsNewCustomer(false);
+  const [savingCheckIn, setSavingCheckIn] = useState(false);
+  const [checkInError, setCheckInError] = useState('');
+  const handleCheckIn = async () => {
+    if (savingCheckIn) return;
+    if (isNewCustomer && !newCustName.trim()) return;
+    let finalCustomerId = selectedCustomerId;
+    let candidate = isNewCustomer ? { name: newCustName.trim(), contact: newCustContact } : undefined;
+    if (!candidate && !finalCustomerId) return;
+    if (!API_SERVER_MODE && candidate) {
+        finalCustomerId = addCustomer(candidate);
+        candidate = undefined;
     }
-
-    if (finalCustId) {
-      checkIn(cabinId, finalCustId, rate);
-      onClose();
-    }
+    setSavingCheckIn(true);
+    setCheckInError('');
+    const success = await checkIn(cabinId, finalCustomerId, rate, candidate);
+    setSavingCheckIn(false);
+    if (success) onClose();
+    else setCheckInError('Session was not saved. Check the cabin, customer and approved hourly rate.');
   };
 
   return (
@@ -109,12 +116,13 @@ export const CheckInModal: React.FC<CheckInModalProps> = ({ cabinId, isOpen, onC
           </div>
 
           <button 
-            disabled={!selectedCustomerId && !isNewCustomer}
+            disabled={savingCheckIn || (!selectedCustomerId && !isNewCustomer)}
             onClick={handleCheckIn}
             className="w-full bg-blue-600 text-white font-bold py-3 rounded-lg hover:bg-blue-700 transition disabled:opacity-50"
           >
-            Start Session
+            {savingCheckIn ? 'Saving...' : 'Start Session'}
           </button>
+          {checkInError && <p role="alert" className="text-sm text-red-600 mt-2">{checkInError}</p>}
         </div>
       </div>
     </div>
@@ -290,8 +298,23 @@ interface CheckoutModalProps {
 }
 
 export const CheckoutModal: React.FC<CheckoutModalProps> = ({ session, isOpen, onClose }) => {
-  const { checkOut, now, customers } = useAppStore();
+  const { checkOut, now, customers, currentUser } = useAppStore();
   const [payment, setPayment] = useState(0);
+  const [checkoutSaving, setCheckoutSaving] = useState(false);
+  const [checkoutError, setCheckoutError] = useState('');
+  const submitCheckout = async (paid: number, outcome: 'PAID' | 'CREDIT') => {
+      if (checkoutSaving) return;
+      if (!Number.isFinite(paid) || paid < 0 || !Number.isFinite(discount) || discount < 0) {
+          setCheckoutError('Enter valid nonnegative payment and discount values.');
+          return;
+      }
+      setCheckoutSaving(true);
+      setCheckoutError('');
+      const saved = await checkOut(session.id, paid, discount);
+      setCheckoutSaving(false);
+      if (saved) setCheckoutStatus(outcome);
+      else setCheckoutError('No payment confirmation received. Check saved records before retrying.');
+  };
   const [discount, setDiscount] = useState(0);
   const [timerStopped, setTimerStopped] = useState(false);
   const [frozenTime, setFrozenTime] = useState(0);
@@ -474,14 +497,15 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({ session, isOpen, o
                  </div>
             )}
 
-            <button 
+            {!API_SERVER_MODE && <button 
                 onClick={toggleTimer}
                 className={`w-full py-2 rounded-lg font-bold text-sm flex items-center justify-center gap-2 transition ${
                     timerStopped ? 'bg-amber-100 text-amber-800 hover:bg-amber-200' : 'bg-red-50 text-red-600 hover:bg-red-100'
                 }`}
             >
                 {timerStopped ? <><PlayCircle size={16}/> Resume Timer</> : <><PauseCircle size={16}/> Stop Timer & Collect</>}
-            </button>
+            </button>}
+            {API_SERVER_MODE && <p className="text-xs text-amber-700">Estimate only. The server calculates the final bill when you confirm checkout.</p>}
           </div>
 
           <div className="space-y-4 bg-gray-50 p-4 rounded-lg">
@@ -493,6 +517,8 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({ session, isOpen, o
                 type="number" 
                 className="w-full p-2 border rounded mb-2 text-right font-mono bg-white text-gray-900"
                 value={discount}
+                min={0}
+                disabled={API_SERVER_MODE && currentUser?.role !== 'ADMIN'}
                 onChange={e => setDiscount(Number(e.target.value))}
               />
             </div>
@@ -525,23 +551,19 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({ session, isOpen, o
               </div>
             ) : null}
 
+            {checkoutError && <p role="alert" className="text-sm text-red-700">{checkoutError}</p>}
             <div className="flex flex-col gap-2 mt-2">
                 <button 
-                onClick={() => {
-                    checkOut(session.id, payment);
-                    setCheckoutStatus('PAID');
-                }}
+                disabled={checkoutSaving}
+                onClick={() => { void submitCheckout(payment, 'PAID'); }}
                 className="w-full bg-green-600 text-white font-bold py-2 rounded-lg hover:bg-green-700 flex items-center justify-center gap-2"
                 >
-                <CreditCard size={18} /> Complete Payment
+                <CreditCard size={18} /> {checkoutSaving ? 'Confirming...' : 'Complete Payment'}
                 </button>
 
                 <button 
-                onClick={() => {
-                    setPayment(0);
-                    checkOut(session.id, 0); // Trigger checkout with 0 payment
-                    setCheckoutStatus('CREDIT');
-                }}
+                disabled={checkoutSaving}
+                onClick={() => { void submitCheckout(0, 'CREDIT'); }}
                 className="w-full bg-gray-200 text-gray-700 font-bold py-2 rounded-lg hover:bg-gray-300 flex items-center justify-center gap-2 text-sm"
                 >
                 Pay Later (Full Udhaar)
@@ -747,6 +769,8 @@ export const ManualEntryModal: React.FC<ManualEntryModalProps> = ({ isOpen, onCl
     const [amount, setAmount] = useState(0); // Total Bill
     const [paidAmount, setPaidAmount] = useState(0); // Actually Paid
     const [reason, setReason] = useState('Power Failure');
+    const [manualSaving, setManualSaving] = useState(false);
+    const [manualError, setManualError] = useState('');
 
     // New Customer State
     const [isNewCustomer, setIsNewCustomer] = useState(false);
@@ -782,23 +806,20 @@ export const ManualEntryModal: React.FC<ManualEntryModalProps> = ({ isOpen, onCl
         }
     }, [searchContact, customers]);
 
-    const handleSave = () => {
-        if((!customerId && !isNewCustomer) || !amount || !date || !time) return;
-
+    const handleSave = async () => {
+        if (manualSaving || ((!customerId && !isNewCustomer) || !amount || !date || !time)) return;
         const timestamp = new Date(`${date}T${time}`).getTime();
-        
-        addManualRecord({
+        setManualSaving(true);
+        setManualError('');
+        const ok = await addManualRecord({
             customerId,
             newCustomer: isNewCustomer ? { name: newCustName, contact: newCustContact } : undefined,
-            cabinId,
-            startTime: timestamp,
-            durationMinutes: Number(duration),
-            amount: Number(amount),
-            paidAmount: Number(paidAmount),
-            reason
+            cabinId, startTime: timestamp, durationMinutes: Number(duration),
+            amount: Number(amount), paidAmount: Number(paidAmount), reason
         });
-
-        onClose();
+        setManualSaving(false);
+        if (ok) onClose();
+        else setManualError('Manual entry was not confirmed. Check the record before retrying.');
     };
 
     if(!isOpen) return null;
@@ -922,7 +943,8 @@ export const ManualEntryModal: React.FC<ManualEntryModalProps> = ({ isOpen, onCl
                     </select>
                  </div>
 
-                 <button onClick={handleSave} className="w-full bg-purple-700 text-white font-bold py-3 rounded-lg hover:bg-purple-800">
+                 <button disabled={manualSaving}
+                    onClick={handleSave} className="w-full bg-purple-700 text-white font-bold py-3 rounded-lg hover:bg-purple-800">
                      Save Manual Record
                  </button>
              </div>
