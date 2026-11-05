@@ -37,6 +37,16 @@ Authenticated PHP/MySQL deployments use atomic check-in, session holds, checkout
 
 This improvement does **not** certify the software as an accounting/POS system. Existing records created by older insecure versions should be reconciled before an upgrade, and hosted deployments require real-world validation.
 
+## Quick start on Windows (local cafe)
+
+With Docker Desktop running, open PowerShell in the cloned project folder:
+
+```powershell
+.\\scripts\\install-local.ps1
+```
+
+The installer generates private database credentials, builds the local app, and prompts for a new administrator password. Open `http://localhost:8080` on the same PC. This is not a LAN or public installation.
+
 ## Install locally or host one cafe online
 
 The same frontend and authenticated PHP/MySQL backend now have two reproducible Docker configurations:
