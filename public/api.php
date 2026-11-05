@@ -327,11 +327,19 @@ try {
         case 'sync_cabin':
             $d = input();
             if (!empty($d['currentSessionId'])) respond(403, ['error' => 'Use authenticated session operations']);
-            $currentCabin = $pdo->prepare('SELECT currentSessionId FROM cabins WHERE id=?');
+            if (!in_array($d['status'] ?? null,
+                ['AVAILABLE','OCCUPIED','ON_HOLD','MAINTENANCE','OUT_OF_SERVICE'], true)) {
+                respond(422, ['error' => 'Invalid cabin status']);
+            }
+            if (in_array($d['status'], ['OCCUPIED','ON_HOLD'], true)) {
+                respond(403, ['error' => 'Cabin occupancy must be managed by session operations']);
+            }
+            $pdo->beginTransaction();
+            $currentCabin = $pdo->prepare('SELECT currentSessionId FROM cabins WHERE id=? FOR UPDATE');
             $currentCabin->execute([required_text($d, 'id', 50)]);
             $activeSession = $currentCabin->fetchColumn();
             if ($activeSession !== false && $activeSession !== null) {
-                respond(409, ['error' => 'An active cabin must be changed through session operations']);
+                billing_fail($pdo, 409, 'An active cabin must be changed through session operations');
             }
             $stmt = $pdo->prepare("INSERT INTO cabins (id, name, status, currentSessionId, statusReason, expectedFix) VALUES (?, ?, ?, ?, ?, ?) 
                 ON DUPLICATE KEY UPDATE status=?, currentSessionId=?, statusReason=?, expectedFix=?");
@@ -339,6 +347,7 @@ try {
                 $d['id'], $d['name'], $d['status'], $d['currentSessionId'] ?? null, $d['statusReason'] ?? null, $d['expectedFix'] ?? null,
                 $d['status'], $d['currentSessionId'] ?? null, $d['statusReason'] ?? null, $d['expectedFix'] ?? null
             ]);
+            $pdo->commit();
             echo json_encode(['status'=>'ok']);
             break;
 
