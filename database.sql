@@ -79,7 +79,8 @@ CREATE TABLE IF NOT EXISTS sessions (
     CONSTRAINT chk_sessions_times CHECK (inTime > 0 AND (outTime IS NULL OR outTime >= inTime)),
     CONSTRAINT chk_sessions_duration CHECK (totalHoldMinutes >= 0 AND effectiveMinutes >= 0),
     INDEX idx_sessions_customer_time (customerId, inTime),
-    INDEX idx_sessions_cabin_state (cabinId, status)
+    INDEX idx_sessions_cabin_state (cabinId, status),
+    CONSTRAINT fk_sessions_customer FOREIGN KEY (customerId) REFERENCES customers(id) ON DELETE RESTRICT
 ) ENGINE=InnoDB;
 
 -- 5. TRANSACTIONS TABLE
@@ -95,7 +96,8 @@ CREATE TABLE IF NOT EXISTS transactions (
     isManual TINYINT(1) DEFAULT 0,
     CONSTRAINT chk_transactions_amount CHECK (amount >= 0),
     INDEX idx_transactions_customer_date (customerId, date),
-    INDEX idx_transactions_related (relatedId)
+    INDEX idx_transactions_related (relatedId),
+    CONSTRAINT fk_transactions_customer FOREIGN KEY (customerId) REFERENCES customers(id) ON DELETE RESTRICT
 ) ENGINE=InnoDB;
 
 -- 6. INVENTORY TABLE
