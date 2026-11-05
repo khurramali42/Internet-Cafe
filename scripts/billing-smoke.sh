@@ -56,6 +56,24 @@ test "$bad_code" = 422 || { echo "FAIL overpayment rejected: $bad_code"; exit 1;
 bad_code="$(post start_session '{"requestId":"ci-billing-atomic","cabinId":"cab-1","customerId":"new","newCustomer":{"name":"Atomic Test Customer"},"ratePerHour":999}' /tmp/altered-start.json)"
 test "$bad_code" = 409 || { echo "FAIL altered idempotency key rejected: $bad_code"; exit 1; }
 
+# A staff operator cannot apply an unapproved custom price or an admin-only discount.
+staff_cookie="$(mktemp)"
+staff_reply="$(mktemp)"
+trap 'rm -f "$cookie" "$login_file" "$staff_cookie" "$staff_reply"' EXIT
+staff_code="$(curl -sS -c "$staff_cookie" -b "$staff_cookie" -o "$staff_reply" -w '%{http_code}' \
+  -X POST -H 'Content-Type: application/json' \
+  --data '{"username":"operator_test","password":"StrongStaffPassword_123!"}' "$base?action=login")"
+test "$staff_code" = 200 || { echo "FAIL staff login: $staff_code"; exit 1; }
+staff_csrf="$(php -r 'echo json_decode(file_get_contents($argv[1]),true)["csrf"];' "$staff_reply")"
+staff_code="$(curl -sS -b "$staff_cookie" -o /tmp/staff-rate.json -w '%{http_code}' -X POST \
+  -H "X-CSRF-Token: $staff_csrf" -H 'Content-Type: application/json' \
+  --data '{"requestId":"ci-staff-unapproved","cabinId":"cab-2","customerId":"cust-ci-billing-atomic","ratePerHour":999}' "$base?action=start_session")"
+test "$staff_code" = 403 || { echo "FAIL staff custom rate: $staff_code"; exit 1; }
+staff_code="$(curl -sS -b "$staff_cookie" -o /tmp/staff-discount.json -w '%{http_code}' -X POST \
+  -H "X-CSRF-Token: $staff_csrf" -H 'Content-Type: application/json' \
+  --data '{"sessionId":"sess-ci-billing-atomic","paymentAmount":0,"discount":1}' "$base?action=checkout_session")"
+test "$staff_code" = 403 || { echo "FAIL unauthorized staff discount: $staff_code"; exit 1; }
+
 # Server measures elapsed time and posts session, customer, cabin and payment in one transaction.
 code="$(post checkout_session '{"sessionId":"sess-ci-billing-atomic","paymentAmount":1,"discount":0}' /tmp/checkout-billing.json)"
 test "$code" = 200 || { echo "FAIL checkout: $code"; cat /tmp/checkout-billing.json; exit 1; }
