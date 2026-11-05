@@ -780,9 +780,10 @@ export const ManualEntryModal: React.FC<ManualEntryModalProps> = ({ isOpen, onCl
 
     useEffect(() => {
         if(isOpen) {
-            const now = new Date();
-            setDate(now.toISOString().split('T')[0]);
-            setTime(now.toTimeString().split(' ')[0].substring(0, 5));
+            // Manual entry is for completed historical usage, not a session ending in the future.
+            const hourAgo = new Date(Date.now() - 60 * 60 * 1000);
+            setDate(format(hourAgo, 'yyyy-MM-dd'));
+            setTime(format(hourAgo, 'HH:mm'));
             setAmount(0);
             setPaidAmount(0);
             setSearchContact('');
@@ -907,6 +908,7 @@ export const ManualEntryModal: React.FC<ManualEntryModalProps> = ({ isOpen, onCl
                      </div>
                  </div>
 
+                 {manualError && <p role="alert" className="text-red-700 text-sm">{manualError}</p>}
                  <div className="bg-green-50 p-3 rounded border border-green-100">
                      <div className="grid grid-cols-2 gap-4">
                         <div>
