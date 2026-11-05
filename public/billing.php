@@ -36,6 +36,11 @@ function billing_return_state(PDO $pdo, array $payload = []): never {
     respond(200, $payload + ['status' => 'ok']);
 }
 
+function billing_audit(PDO $pdo, array $authUser, string $action, string $details, int $now): void {
+    $pdo->prepare('INSERT INTO audit_logs (id,userId,username,action,details,timestamp,ipAddress) VALUES (?,?,?,?,?,?,?)')
+        ->execute([bin2hex(random_bytes(16)), $authUser['id'], $authUser['username'],
+            $action, $details, $now, $_SERVER['REMOTE_ADDR'] ?? 'unknown']);
+}
 function handle_billing(string $action, PDO $pdo, array $authUser): void {
     if (!in_array($action, ['start_session', 'toggle_session_hold', 'move_session', 'checkout_session', 'settle_balance', 'manual_session'], true)) return;
     if (($_SERVER['REQUEST_METHOD'] ?? '') !== 'POST') respond(405, ['error' => 'POST required']);
@@ -166,7 +171,7 @@ function handle_billing(string $action, PDO $pdo, array $authUser): void {
             $due=$gross-$discount;
             $prior=(float)$customer['outstandingBalance'];
             // No unsupported customer credit or change recording.
-            if ($paid>round($due+max(0,$prior),2)) billing_fail($pdo,422,'Payment exceeds bill and outstanding balance');
+            if ($paid>max(0,round($due+$prior,2))) billing_fail($pdo,422,'Payment exceeds net bill and outstanding balance');
             $balance=round($prior+$due-$paid,2);
             $pdo->prepare("UPDATE sessions SET outTime=?,totalHoldMinutes=?,effectiveMinutes=?,amountDue=?,amountPaid=?,status='CLOSED',holdsJson=? WHERE id=?")
                 ->execute([$now,(int)floor($heldMs/60000),$minutes,$due,$paid,json_encode($ended),$id]);
@@ -178,6 +183,8 @@ function handle_billing(string $action, PDO $pdo, array $authUser): void {
                 $pdo->prepare('INSERT INTO transactions (id,type,amount,date,description,category,relatedId,customerId,isManual) VALUES (?,?,?,?,?,?,?,?,0)')
                     ->execute(['tx-chk-'.$id,'PAYMENT',$paid,$now,'Payment for session '.$id,'Session',$id,$s['customerId']]);
             }
+            billing_audit($pdo,$authUser,'SESSION_CHECKOUT',
+                'Session '.$id.' gross='.$gross.' discount='.$discount.' charged='.$due.' paid='.$paid,$now);
             $updated=billing_row($pdo,'SELECT * FROM sessions WHERE id=?',[$id]);
             $pdo->commit();
             billing_return_state($pdo,['session'=>billing_session_json($updated),'balance'=>$balance]);
@@ -204,6 +211,8 @@ function handle_billing(string $action, PDO $pdo, array $authUser): void {
             $pdo->prepare('UPDATE customers SET outstandingBalance=? WHERE id=?')->execute([$newBalance,$customerId]);
             $pdo->prepare('INSERT INTO transactions (id,type,amount,date,description,category,customerId,isManual) VALUES (?,?,?,?,?,?,?,0)')
                 ->execute([$txId,'PAYMENT',$amount,$now,'Balance Settlement - '.$customer['name'],'Settlement',$customerId]);
+            billing_audit($pdo,$authUser,'BALANCE_SETTLEMENT',
+                'Customer '.$customerId.' received='.$amount.' remaining='.$newBalance,$now);
             $pdo->commit();
             billing_return_state($pdo,['balance'=>$newBalance]);
         }
@@ -247,6 +256,8 @@ function handle_billing(string $action, PDO $pdo, array $authUser): void {
                 $pdo->prepare('INSERT INTO transactions (id,type,amount,date,description,category,relatedId,customerId,isManual) VALUES (?,?,?,?,?,?,?,?,1)')
                     ->execute(['tx-manual-'.$key,'PAYMENT',$paid,$now,'Manual session: '.$reason,'Manual',$id,$customerId]);
             }
+            billing_audit($pdo,$authUser,'MANUAL_SESSION',
+                'Manual session '.$id.' charge='.$amount.' paid='.$paid.' reason='.$reason,$now);
             $created=billing_row($pdo,'SELECT * FROM sessions WHERE id=?',[$id]);
             $pdo->commit();
             billing_return_state($pdo,['session'=>billing_session_json($created),'balance'=>$newBalance]);
