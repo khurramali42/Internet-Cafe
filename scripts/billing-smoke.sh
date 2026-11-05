@@ -50,6 +50,12 @@ php -r '
  exit(1);
 ' || { echo "FAIL client forged balance stored"; exit 1; }
 
+# A failed/tampered checkout must roll back without changing session or balance.
+bad_code="$(post checkout_session '{"sessionId":"sess-ci-billing-atomic","paymentAmount":999999,"discount":0}' /tmp/overpay.json)"
+test "$bad_code" = 422 || { echo "FAIL overpayment rejected: $bad_code"; exit 1; }
+bad_code="$(post start_session '{"requestId":"ci-billing-atomic","cabinId":"cab-1","customerId":"new","newCustomer":{"name":"Atomic Test Customer"},"ratePerHour":999}' /tmp/altered-start.json)"
+test "$bad_code" = 409 || { echo "FAIL altered idempotency key rejected: $bad_code"; exit 1; }
+
 # Server measures elapsed time and posts session, customer, cabin and payment in one transaction.
 code="$(post checkout_session '{"sessionId":"sess-ci-billing-atomic","paymentAmount":1,"discount":0}' /tmp/checkout-billing.json)"
 test "$code" = 200 || { echo "FAIL checkout: $code"; cat /tmp/checkout-billing.json; exit 1; }
@@ -92,4 +98,27 @@ php -r '
  }
  exit(1);
 ' || { echo "FAIL final ledger balance or duplicate settlement"; exit 1; }
+# Manually entered historical bills are administrator-authorized, audited and idempotent.
+manual_start="$(($(date -u +%s) * 1000 - 7200000))"
+manual_payload="{\"requestId\":\"ci-manual-atomic\",\"customerId\":\"cust-ci-billing-atomic\",\"cabinId\":\"General\",\"startTime\":$manual_start,\"durationMinutes\":60,\"amount\":30,\"paidAmount\":10,\"reason\":\"CI Test\"}"
+code="$(post manual_session "$manual_payload" /tmp/manual-billing.json)"
+test "$code" = 200 || { echo "FAIL manual billing: $code"; cat /tmp/manual-billing.json; exit 1; }
+code="$(post manual_session "$manual_payload" /tmp/manual-replay.json)"
+test "$code" = 200 || { echo "FAIL manual idempotent replay: $code"; exit 1; }
+grep -q '"replayed":true' /tmp/manual-replay.json
+bad_code="$(post manual_session "{\"requestId\":\"ci-manual-atomic\",\"customerId\":\"cust-ci-billing-atomic\",\"cabinId\":\"General\",\"startTime\":$manual_start,\"durationMinutes\":60,\"amount\":40,\"paidAmount\":10,\"reason\":\"CI Test\"}" /tmp/manual-altered.json)"
+test "$bad_code" = 409 || { echo "FAIL altered manual replay: $bad_code"; exit 1; }
+code="$(curl -sS -b "$cookie" -o /tmp/init-manual.json -w '%{http_code}' "$base?action=init")"
+test "$code" = 200
+php -r '
+ $d=json_decode(file_get_contents("/tmp/init-manual.json"),true);
+ $tx=array_filter($d["transactions"],fn($x)=>$x["id"]==="tx-manual-ci-manual-atomic");
+ if(count($tx)!==1) exit(1);
+ foreach($d["customers"] as $c) if($c["id"]==="cust-ci-billing-atomic") {
+    if(abs((float)$c["outstandingBalance"]-20)>0.001) exit(1);
+    exit(0);
+ }
+ exit(1);
+' || { echo "FAIL manual ledger not updated exactly once"; exit 1; }
+
 echo "PASS: atomic session billing, idempotent checkout and settlement, no forged client balances"
