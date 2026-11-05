@@ -3,13 +3,16 @@ name: Security Change Validation
 on:
   push:
     branches:
-      - security/server-auth-hardening
-      - feature/local-hosted-deployment
-      - release/database-recovery-hardening
-      - fix/atomic-cafe-billing
+      - main
   pull_request:
     branches:
       - main
+
+# Prevent redundant in-progress tests from older commits of the same PR/branch.
+# Historical workflow reruns are separate user-triggered attempts; do not rerun obsolete SHAs.
+concurrency:
+  group: security-validation-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
