@@ -55,6 +55,19 @@ code="$(curl -sS -b "$cookie" -o /tmp/customer-write.json -w '%{http_code}' -X P
   "$base?action=sync_customer")"
 test "$code" = 200 || { echo "FAIL customer sync: $code"; cat /tmp/customer-write.json; exit 1; }
 
+
+# Verify finance and stock routes use the new JSON parser as well.
+code="$(curl -sS -b "$cookie" -o /tmp/finance-write.json -w '%{http_code}' -X POST \
+  -H "X-CSRF-Token: $csrf" -H 'Content-Type: application/json' \
+  --data '{"id":"ci-sale","type":"SALE","amount":1,"date":1783500000000,"description":"Test sale","category":"Test","isManual":false}' \
+  "$base?action=sync_transaction")"
+test "$code" = 200 || { echo "FAIL transaction sync: $code"; cat /tmp/finance-write.json; exit 1; }
+code="$(curl -sS -b "$cookie" -o /tmp/stock-write.json -w '%{http_code}' -X POST \
+  -H "X-CSRF-Token: $csrf" -H 'Content-Type: application/json' \
+  --data '{"id":"ci-stock","name":"CI Item","category":"Test","quantity":1,"status":"IN_USE","purchaseDate":0,"cost":1}' \
+  "$base?action=sync_inventory")"
+test "$code" = 200 || { echo "FAIL inventory sync: $code"; cat /tmp/stock-write.json; exit 1; }
+
 # Rate limiter must not be bypassable by opening a fresh session each attempt.
 for i in 1 2 3 4 5; do
   code="$(curl -sS -o /tmp/throttle.json -w '%{http_code}' -X POST \
