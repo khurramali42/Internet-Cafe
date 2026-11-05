@@ -25,6 +25,12 @@ The default build is an **isolated fictional demo**. To connect to a real PHP/My
 
 **Do not copy demo credentials into a real deployment.** Before upgrading an existing install, back up the database and review the [secure deployment and credential migration guide](docs/SECURE_DEPLOYMENT.md). The older database schema used plaintext seeded passwords; these no longer work against the protected API.
 
+## Public release status and deployment requirements
+
+This is a public, MIT-licensed **technical preview**, not a turnkey certified point-of-sale system. The repository can be cloned and tried with fictional data. **Real cafe use requires per-installation HTTPS, backups, administrator credentials, tested recovery and financial reconciliation.**
+
+See the [public release acceptance checklist](docs/PUBLIC_RELEASE_CHECKLIST.md). For an **existing database**, use the backup-gated additive migration `scripts/migrate-financial-schema.php` after reconciling old balances; importing `database.sql` will not migrate existing tables. Never upload any customer backups to GitHub.
+
 ## Server-authoritative billing (local and hosted)
 
 Authenticated PHP/MySQL deployments use atomic check-in, session holds, checkout and outstanding-balance settlement. Payment writes wait for database confirmation, replayed checkouts cannot charge twice, and cash balance totals cannot be directly overwritten from the browser. See the [billing integrity and safe-upgrade guide](docs/BILLING_INTEGRITY.md).
