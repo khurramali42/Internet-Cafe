@@ -13,7 +13,7 @@ A browser-based management project for internet cafes, gaming lounges, PC cabin 
 - **Operations:** Inventory, repair tickets, expenses, and transactions.
 - **Reporting:** Financial visualizations and audit-log UI.
 - **Local demo mode:** Browser-based storage lets you explore without a server.
-- **Optional authenticated backend:** PHP/MySQL synchronization includes server-side login and session protection. Business data integrity and multi-user consistency still require production validation.
+- **Optional authenticated backend:** PHP/MySQL synchronization includes server-side login and session protection. Basic input limits are enforced, but server-authoritative pricing, transactional consistency and multi-user integrity still require production validation.
 
 ## Who it's for
 
@@ -80,6 +80,6 @@ Screenshots are reproducible via the [GitHub Actions capture workflow](.github/w
 - **Known critical issues:** [Security guidance](SECURITY.md).
 - **Roadmap:** See the repository's GitHub Issues.
 - **Feedback:** Open an issue describing your venue type, number of PCs, desired features, and any bugs (without personal or financial data).
-- **Reuse/licensing:** No open-source license has been granted in this repository yet. Public source visibility alone does not grant permission to redistribute or modify it. The repository owner should choose and add an explicit license before inviting third-party reuse or contributions.
+- **Reuse/licensing:** Released under the [MIT License](LICENSE). You may use, modify, and redistribute the code under its terms. The software is provided without warranty.
 
 If you run a gaming center or internet cafe, I'd like to hear what workflow would make this product useful for you.
