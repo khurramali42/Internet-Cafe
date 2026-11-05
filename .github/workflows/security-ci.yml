@@ -101,6 +101,9 @@ jobs:
 
   deployment-config:
     runs-on: ubuntu-24.04
+    env:
+      SPEEDY_DB_PASSWORD: ci_compose_secret_only
+      SPEEDY_DB_ROOT_PASSWORD: ci_compose_root_only
     steps:
       - uses: actions/checkout@v4
       - name: Validate both Docker Compose deployment models
