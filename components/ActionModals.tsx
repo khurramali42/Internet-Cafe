@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useAppStore } from '../store';
 import { Customer, Session, Cabin, CabinStatus, Transaction } from '../types';
 import { X, UserPlus, Clock, Calculator, CreditCard, Wrench, AlertTriangle, FileText, Calendar, Search, History, PauseCircle, PlayCircle, CheckCircle, AlertCircle, ArrowUpCircle } from 'lucide-react';
@@ -300,6 +300,7 @@ interface CheckoutModalProps {
 export const CheckoutModal: React.FC<CheckoutModalProps> = ({ session, isOpen, onClose }) => {
   const { checkOut, now, customers, currentUser } = useAppStore();
   const [payment, setPayment] = useState(0);
+  const initialPaymentApplied = useRef(false);
   const [checkoutSaving, setCheckoutSaving] = useState(false);
   const [checkoutError, setCheckoutError] = useState('');
   const submitCheckout = async (paid: number, outcome: 'PAID' | 'CREDIT') => {
@@ -331,6 +332,7 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({ session, isOpen, o
     if (!isOpen) {
         setTimerStopped(false);
         setCheckoutStatus('IDLE');
+        initialPaymentApplied.current = false;
         return;
     }
 
@@ -353,8 +355,9 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({ session, isOpen, o
         amount: baseAmount
       });
       
-      if (!timerStopped && checkoutStatus === 'IDLE') {
+      if (!initialPaymentApplied.current) {
           setPayment(baseAmount);
+          initialPaymentApplied.current = true;
       }
     };
 
@@ -519,7 +522,11 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({ session, isOpen, o
                 value={discount}
                 min={0}
                 disabled={API_SERVER_MODE && currentUser?.role !== 'ADMIN'}
-                onChange={e => setDiscount(Number(e.target.value))}
+                onChange={e => {
+                    const d = Number(e.target.value);
+                    setDiscount(d);
+                    setPayment(Math.max(0, stats.amount - d));
+                }}
               />
             </div>
 
@@ -547,7 +554,7 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({ session, isOpen, o
               </div>
             ) : payment > displayTotalOutstanding ? (
               <div className="text-blue-600 text-xs font-bold text-right">
-                Change Return: Rs.{payment - displayTotalOutstanding}
+                Overpayment is not accepted. Return change and enter only the amount collected.
               </div>
             ) : null}
 
