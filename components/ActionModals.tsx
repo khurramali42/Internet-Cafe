@@ -26,9 +26,10 @@ export const CheckInModal: React.FC<CheckInModalProps> = ({ cabinId, isOpen, onC
 
   const [savingCheckIn, setSavingCheckIn] = useState(false);
   const [checkInError, setCheckInError] = useState('');
-  const [checkInKey, setCheckInKey] = useState<string | null>(null);
+  const checkInKey = useRef<string | null>(null);
+  const checkInPending = useRef(false);
   const handleCheckIn = async () => {
-    if (savingCheckIn) return;
+    if (checkInPending.current) return;
     if (isNewCustomer && !newCustName.trim()) return;
     let finalCustomerId = selectedCustomerId;
     let candidate = isNewCustomer ? { name: newCustName.trim(), contact: newCustContact } : undefined;
@@ -37,13 +38,18 @@ export const CheckInModal: React.FC<CheckInModalProps> = ({ cabinId, isOpen, onC
         finalCustomerId = addCustomer(candidate);
         candidate = undefined;
     }
+    checkInPending.current = true;
     setSavingCheckIn(true);
     setCheckInError('');
-    const requestId = checkInKey || crypto.randomUUID();
-    setCheckInKey(requestId);
+    const requestId = checkInKey.current || crypto.randomUUID();
+    checkInKey.current = requestId;
     const success = await checkIn(cabinId, finalCustomerId, rate, candidate, requestId);
+    checkInPending.current = false;
     setSavingCheckIn(false);
-    if (success) onClose();
+    if (success) {
+        checkInKey.current = null;
+        onClose();
+    }
     else setCheckInError('Session was not saved. Check the cabin, customer and approved hourly rate.');
   };
 
@@ -304,17 +310,20 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({ session, isOpen, o
   const { checkOut, now, customers, currentUser } = useAppStore();
   const [payment, setPayment] = useState(0);
   const initialPaymentApplied = useRef(false);
+  const checkoutPending = useRef(false);
   const [checkoutSaving, setCheckoutSaving] = useState(false);
   const [checkoutError, setCheckoutError] = useState('');
   const submitCheckout = async (paid: number, outcome: 'PAID' | 'CREDIT') => {
-      if (checkoutSaving) return;
+      if (checkoutPending.current) return;
       if (!Number.isFinite(paid) || paid < 0 || !Number.isFinite(discount) || discount < 0) {
           setCheckoutError('Enter valid nonnegative payment and discount values.');
           return;
       }
+      checkoutPending.current = true;
       setCheckoutSaving(true);
       setCheckoutError('');
       const saved = await checkOut(session.id, paid, discount);
+      checkoutPending.current = false;
       setCheckoutSaving(false);
       if (saved) setCheckoutStatus(outcome);
       else setCheckoutError('No payment confirmation received. Check saved records before retrying.');
@@ -781,7 +790,8 @@ export const ManualEntryModal: React.FC<ManualEntryModalProps> = ({ isOpen, onCl
     const [reason, setReason] = useState('Power Failure');
     const [manualSaving, setManualSaving] = useState(false);
     const [manualError, setManualError] = useState('');
-    const [manualKey, setManualKey] = useState<string | null>(null);
+    const manualKey = useRef<string | null>(null);
+    const manualPending = useRef(false);
 
     // New Customer State
     const [isNewCustomer, setIsNewCustomer] = useState(false);
@@ -798,7 +808,7 @@ export const ManualEntryModal: React.FC<ManualEntryModalProps> = ({ isOpen, onCl
             setAmount(0);
             setPaidAmount(0);
             setSearchContact('');
-            setManualKey(null);
+            manualKey.current = null;
             setManualError('');
             setIsNewCustomer(false);
         }
@@ -821,20 +831,25 @@ export const ManualEntryModal: React.FC<ManualEntryModalProps> = ({ isOpen, onCl
     }, [searchContact, customers]);
 
     const handleSave = async () => {
-        if (manualSaving || ((!customerId && !isNewCustomer) || !amount || !date || !time)) return;
+        if (manualPending.current || ((!customerId && !isNewCustomer) || !amount || !date || !time)) return;
         const timestamp = new Date(`${date}T${time}`).getTime();
+        manualPending.current = true;
         setManualSaving(true);
         setManualError('');
-        const requestId = manualKey || crypto.randomUUID();
-        setManualKey(requestId);
+        const requestId = manualKey.current || crypto.randomUUID();
+        manualKey.current = requestId;
         const ok = await addManualRecord({
             customerId,
             newCustomer: isNewCustomer ? { name: newCustName, contact: newCustContact } : undefined,
             cabinId, startTime: timestamp, durationMinutes: Number(duration),
             amount: Number(amount), paidAmount: Number(paidAmount), reason
         }, requestId);
+        manualPending.current = false;
         setManualSaving(false);
-        if (ok) onClose();
+        if (ok) {
+            manualKey.current = null;
+            onClose();
+        }
         else setManualError('Manual entry was not confirmed. Check the record before retrying.');
     };
 
