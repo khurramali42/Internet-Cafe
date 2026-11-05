@@ -1,5 +1,5 @@
 
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { useAppStore } from '../store';
 import { Search, DollarSign, User, History } from 'lucide-react';
 import { CustomerHistoryModal } from './ActionModals';
@@ -20,18 +20,21 @@ export const Customers: React.FC = () => {
   const { settleBalance } = useAppStore();
   const [settling, setSettling] = useState(false);
   const [settlementError, setSettlementError] = useState('');
-  const [settlementKey, setSettlementKey] = useState<string | null>(null);
+  const settlementKey = useRef<string | null>(null);
+  const settlementPending = useRef(false);
 
   const handleSettleBalance = async (customerId: string) => {
     const cust = customers.find(c => c.id === customerId);
-    if (!cust || settleAmount <= 0 || settling) return;
+    if (!cust || settleAmount <= 0 || settlementPending.current) return;
 
     if ((import.meta.env.VITE_API_URL || '').trim()) {
-        const key = settlementKey || crypto.randomUUID();
-        setSettlementKey(key);
+        const key = settlementKey.current || crypto.randomUUID();
+        settlementKey.current = key;
+        settlementPending.current = true;
         setSettling(true);
         setSettlementError('');
         const saved = await settleBalance(customerId, settleAmount, key);
+        settlementPending.current = false;
         setSettling(false);
         if (!saved) {
             setSettlementError('Balance payment was not confirmed. Check the server record before retrying.');
@@ -48,7 +51,7 @@ export const Customers: React.FC = () => {
     setSettleModalOpen(null);
     setSettleAmount(0);
     setSettleRemarks('');
-    setSettlementKey(null);
+    settlementKey.current = null;
   };
 
   const activeCustomer = customers.find(c => c.id === historyModalId);
@@ -119,7 +122,7 @@ export const Customers: React.FC = () => {
                                     setSettleModalOpen(customer.id);
                                     setSettleAmount(customer.outstandingBalance);
                                     setSettlementError('');
-                                    setSettlementKey(null);
+                                    settlementKey.current = null;
                                 }}
                                 className="text-blue-600 hover:text-blue-800 text-sm font-medium flex items-center gap-1"
                                 title="Settle Balance"
