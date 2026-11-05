@@ -64,6 +64,11 @@ function handle_billing(string $action, PDO $pdo, array $authUser): void {
             if (!$cabin) billing_fail($pdo, 404, 'Cabin not found');
             $existing = billing_row($pdo, 'SELECT * FROM sessions WHERE id=? FOR UPDATE', [$id]);
             if ($existing) {
+                $expectedCustomer = $customerId === 'new' ? 'cust-'.$key : $customerId;
+                if ($existing['cabinId'] !== $cabinId || $existing['customerId'] !== $expectedCustomer
+                    || abs((float)$existing['ratePerHour']-$rate)>0.001) {
+                    billing_fail($pdo,409,'Session request ID reused with different details');
+                }
                 $pdo->commit();
                 billing_return_state($pdo, ['session' => billing_session_json($existing), 'replayed' => true]);
             }
@@ -233,6 +238,13 @@ function handle_billing(string $action, PDO $pdo, array $authUser): void {
             $pdo->beginTransaction();
             $old = billing_row($pdo,'SELECT * FROM sessions WHERE id=? FOR UPDATE',[$id]);
             if ($old) {
+                $expectedCustomer = !empty($d['newCustomer']) ? 'cust-manual-'.$key : ($d['customerId'] ?? '');
+                if ($old['customerId'] !== $expectedCustomer || $old['cabinId'] !== $cabinId
+                    || (int)$old['inTime'] !== $start || (int)$old['effectiveMinutes'] !== $minutes
+                    || abs((float)$old['amountDue']-$amount)>0.001
+                    || abs((float)$old['amountPaid']-$paid)>0.001) {
+                    billing_fail($pdo,409,'Manual request ID reused with different details');
+                }
                 $pdo->commit();
                 billing_return_state($pdo,['replayed'=>true,'session'=>billing_session_json($old)]);
             }
