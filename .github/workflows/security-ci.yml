@@ -102,6 +102,8 @@ jobs:
           exit 1
       - name: Test authentication, CSRF and role authorization
         run: bash scripts/security-smoke.sh
+      - name: Test atomic billing, idempotency and customer ledger
+        run: bash scripts/billing-smoke.sh
 
   deployment-config:
     runs-on: ubuntu-24.04
