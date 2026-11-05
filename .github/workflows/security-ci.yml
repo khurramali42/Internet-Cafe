@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - security/server-auth-hardening
+      - feature/local-hosted-deployment
   pull_request:
     branches:
       - main
@@ -93,3 +94,14 @@ jobs:
           exit 1
       - name: Test authentication, CSRF and role authorization
         run: bash scripts/security-smoke.sh
+
+  deployment-config:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate both Docker Compose deployment models
+        run: |
+          docker compose --env-file deploy/.env.template -f deploy/local.compose.yml config --quiet
+          docker compose --env-file deploy/.env.template -f deploy/hosted.compose.yml config --quiet
+      - name: Build the shared frontend and PHP image
+        run: docker build -t speedy-cafe:ci .
