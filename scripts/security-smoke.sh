@@ -47,6 +47,14 @@ code="$(curl -sS -b "$cookie.staff" -o /tmp/forbidden.json -w '%{http_code}' -X 
 test "$code" = 403 || { echo "FAIL staff authorization: $code"; exit 1; }
 rm -f "$cookie.staff"
 
+
+# Exercise a real authenticated database mutation to catch obsolete PHP helpers.
+code="$(curl -sS -b "$cookie" -o /tmp/customer-write.json -w '%{http_code}' -X POST \
+  -H "X-CSRF-Token: $csrf" -H 'Content-Type: application/json' \
+  --data '{"id":"ci-customer","name":"Fictional CI Customer","contact":"000","totalSpent":0,"outstandingBalance":0}' \
+  "$base?action=sync_customer")"
+test "$code" = 200 || { echo "FAIL customer sync: $code"; cat /tmp/customer-write.json; exit 1; }
+
 # Rate limiter must not be bypassable by opening a fresh session each attempt.
 for i in 1 2 3 4 5; do
   code="$(curl -sS -o /tmp/throttle.json -w '%{http_code}' -X POST \
