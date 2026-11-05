@@ -65,7 +65,16 @@ function handle_billing(string $action, PDO $pdo, array $authUser): void {
             if ($cabin['status'] !== 'AVAILABLE' || $cabin['currentSessionId'] !== null) {
                 billing_fail($pdo, 409, 'Cabin is already occupied or unavailable');
             }
-            if (!billing_row($pdo, 'SELECT id FROM customers WHERE id=?', [$customerId])) billing_fail($pdo, 404, 'Customer not found');
+            if ($customerId === 'new' && isset($d['newCustomer']) && is_array($d['newCustomer'])) {
+                $name = required_text($d['newCustomer'], 'name', 100);
+                $contact = trim((string) ($d['newCustomer']['contact'] ?? ''));
+                if (strlen($contact) > 50) billing_fail($pdo, 422, 'Contact too long');
+                $customerId = 'cust-' . $key;
+                $pdo->prepare('INSERT INTO customers (id,name,contact,totalSpent,outstandingBalance) VALUES (?,?,?,0,0)')
+                    ->execute([$customerId,$name,$contact]);
+            } elseif (!billing_row($pdo, 'SELECT id FROM customers WHERE id=?', [$customerId])) {
+                billing_fail($pdo, 404, 'Customer not found');
+            }
             $pdo->prepare('INSERT INTO sessions (id,cabinId,customerId,inTime,ratePerHour,totalHoldMinutes,effectiveMinutes,amountDue,amountPaid,status,createdBy,isManual,holdsJson) VALUES (?,?,?,?,?,0,0,0,0,?,?,0,?)')
                 ->execute([$id, $cabinId, $customerId, $now, $rate, 'OPEN', $authUser['username'], '[]']);
             $pdo->prepare("UPDATE cabins SET status='OCCUPIED',currentSessionId=? WHERE id=?")->execute([$id,$cabinId]);
@@ -197,6 +206,50 @@ function handle_billing(string $action, PDO $pdo, array $authUser): void {
                 ->execute([$txId,'PAYMENT',$amount,$now,'Balance Settlement - '.$customer['name'],'Settlement',$customerId]);
             $pdo->commit();
             billing_return_state($pdo,['balance'=>$newBalance]);
+        }
+
+        if ($action === 'manual_session') {
+            if ($authUser['role'] !== 'ADMIN') respond(403, ['error' => 'Manual billing requires administrator']);
+            $key = billing_id($d,'requestId');
+            $id = 'sess-manual-'.$key;
+            $amount = billing_money($d,'amount');
+            $paid = billing_money($d,'paidAmount');
+            if ($paid>$amount) respond(422,['error'=>'Payment exceeds manual bill']);
+            $start = (int) ($d['startTime'] ?? 0);
+            $minutes = (int) ($d['durationMinutes'] ?? 0);
+            if ($start<=0 || $start>$now || $minutes<1 || $minutes>10080
+                || $start+$minutes*60000>$now) respond(422,['error'=>'Invalid manual session time']);
+            $reason=required_text($d,'reason',500);
+            $cabinId=required_text($d,'cabinId',50);
+            $pdo->beginTransaction();
+            $old = billing_row($pdo,'SELECT * FROM sessions WHERE id=? FOR UPDATE',[$id]);
+            if ($old) {
+                $pdo->commit();
+                billing_return_state($pdo,['replayed'=>true,'session'=>billing_session_json($old)]);
+            }
+            $customerId = ($d['customerId'] ?? '') === '' ? 'cust-manual-'.$key : billing_id($d,'customerId');
+            if (!empty($d['newCustomer']) && is_array($d['newCustomer'])) {
+                $name=required_text($d['newCustomer'],'name',100);
+                $contact=trim((string) ($d['newCustomer']['contact'] ?? ''));
+                if (strlen($contact)>50) billing_fail($pdo,422,'Contact too long');
+                $customerId='cust-manual-'.$key;
+                $pdo->prepare('INSERT INTO customers (id,name,contact,totalSpent,outstandingBalance) VALUES (?,?,?,0,0)')
+                    ->execute([$customerId,$name,$contact]);
+            }
+            $cust=billing_row($pdo,'SELECT * FROM customers WHERE id=? FOR UPDATE',[$customerId]);
+            if (!$cust) billing_fail($pdo,404,'Customer not found');
+            $pdo->prepare('INSERT INTO sessions (id,cabinId,customerId,inTime,outTime,ratePerHour,totalHoldMinutes,effectiveMinutes,amountDue,amountPaid,status,createdBy,isManual,manualReason,holdsJson) VALUES (?,?,?,?,?,0,0,?,?,?,\'CLOSED\',?,1,?,\'[]\')')
+                ->execute([$id,$cabinId,$customerId,$start,$start+$minutes*60000,$minutes,$amount,$paid,$authUser['username'],$reason]);
+            $newBalance=round((float)$cust['outstandingBalance']+$amount-$paid,2);
+            $pdo->prepare('UPDATE customers SET totalSpent=totalSpent+?,outstandingBalance=? WHERE id=?')
+                ->execute([$amount,$newBalance,$customerId]);
+            if ($paid>0) {
+                $pdo->prepare('INSERT INTO transactions (id,type,amount,date,description,category,relatedId,customerId,isManual) VALUES (?,?,?,?,?,?,?,?,1)')
+                    ->execute(['tx-manual-'.$key,'PAYMENT',$paid,$now,'Manual session: '.$reason,'Manual',$id,$customerId]);
+            }
+            $created=billing_row($pdo,'SELECT * FROM sessions WHERE id=?',[$id]);
+            $pdo->commit();
+            billing_return_state($pdo,['session'=>billing_session_json($created),'balance'=>$newBalance]);
         }
     } catch (Throwable $e) {
         if ($pdo->inTransaction()) $pdo->rollBack();
