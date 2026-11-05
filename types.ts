@@ -152,7 +152,7 @@ export interface AppContextType extends AppState {
   resolveMaintenance: (cabinId: string) => void;
   addCustomer: (customer: Omit<Customer, 'id' | 'totalSpent' | 'outstandingBalance'>) => string; 
   updateCustomer: (customer: Customer) => void;
-  addTransaction: (t: Omit<Transaction, 'id' | 'date'> & { date?: number }) => void;
+  addTransaction: (t: Omit<Transaction, 'id' | 'date'> & { date?: number }, requestId?: string) => Promise<boolean>;
   addInventoryItem: (item: Omit<InventoryItem, 'id'>) => void;
   updateInventoryItem: (item: InventoryItem) => void;
   deleteInventoryItem: (id: string) => void;
