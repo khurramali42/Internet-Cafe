@@ -82,6 +82,19 @@ bad_stock_code="$(curl -sS -b "$cookie" -o /tmp/invalid-stock.json -w '%{http_co
   "$base?action=sync_inventory")"
 test "$bad_stock_code" = 422 || { echo "FAIL negative stock rejected: $bad_stock_code"; exit 1; }
 
+
+# Reject malformed financial payloads even from an authenticated administrator.
+bad_code="$(curl -sS -b "$cookie" -o /tmp/invalid-finance.json -w '%{http_code}' -X POST \
+  -H "X-CSRF-Token: $csrf" -H 'Content-Type: application/json' \
+  --data '{"id":"invalid-finance","type":"SALE","amount":-500,"date":1783500000000,"description":"Invalid"}' \
+  "$base?action=sync_transaction")"
+test "$bad_code" = 422 || { echo "FAIL negative amount validation: $bad_code"; exit 1; }
+bad_code="$(curl -sS -b "$cookie" -o /tmp/invalid-stock.json -w '%{http_code}' -X POST \
+  -H "X-CSRF-Token: $csrf" -H 'Content-Type: application/json' \
+  --data '{"id":"invalid-stock","name":"Invalid Item","quantity":-3,"cost":1}' \
+  "$base?action=sync_inventory")"
+test "$bad_code" = 422 || { echo "FAIL negative stock validation: $bad_code"; exit 1; }
+
 # Rate limiter must not be bypassable by opening a fresh session each attempt.
 for i in 1 2 3 4 5; do
   code="$(curl -sS -o /tmp/throttle.json -w '%{http_code}' -X POST \
