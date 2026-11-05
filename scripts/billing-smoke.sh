@@ -65,7 +65,7 @@ code="$(curl -sS -b "$cookie" -o /tmp/init-after-checkout.json -w '%{http_code}'
 test "$code" = 200
 php -r '
  $d=json_decode(file_get_contents("/tmp/init-after-checkout.json"),true);
- $tx=array_filter($d["transactions"],fn($x)=>$x["id"]==="tx-checkout-sess-ci-billing-atomic");
+ $tx=array_filter($d["transactions"],fn($x)=>$x["id"]==="tx-chk-sess-ci-billing-atomic");
  $cab=array_values(array_filter($d["cabins"],fn($x)=>$x["id"]==="cab-1"))[0];
  if(count($tx)!==1 || $cab["status"]!=="AVAILABLE" || $cab["currentSessionId"]!==null) exit(1);
 ' || { echo "FAIL duplicate checkout ledger or cabin release"; exit 1; }
@@ -83,7 +83,7 @@ code="$(curl -sS -b "$cookie" -o /tmp/init-after-settle.json -w '%{http_code}' "
 test "$code" = 200
 php -r '
  $d=json_decode(file_get_contents("/tmp/init-after-settle.json"),true);
- $tx=array_filter($d["transactions"],fn($x)=>$x["id"]==="tx-checkout-sess-ci-billing-atomic");
+ $tx=array_filter($d["transactions"],fn($x)=>$x["id"]==="tx-chk-sess-ci-billing-atomic");
  $settle=array_filter($d["transactions"],fn($x)=>$x["id"]==="tx-settle-ci-settle-atomic");
  if(count($tx)!==1 || count($settle)>1) exit(1);
  foreach($d["customers"] as $c) if($c["id"]==="cust-ci-billing-atomic") {
