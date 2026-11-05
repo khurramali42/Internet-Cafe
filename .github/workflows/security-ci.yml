@@ -165,6 +165,15 @@ jobs:
           grep -q '"user":null' /tmp/speedy-status.json
           code="$(curl -s -o /tmp/speedy-init.json -w '%{http_code}' http://127.0.0.1:8080/api.php?action=init)"
           test "$code" = "401"
+      - name: Verify application DB user cannot create or alter tables
+        run: |
+          docker compose -f deploy/local.compose.yml exec -T database sh -c \
+            'MYSQL_PWD="$MYSQL_PASSWORD" mysql -uspeedy_app speedy_cafe -e "SELECT COUNT(*) FROM customers"'
+          if docker compose -f deploy/local.compose.yml exec -T database sh -c \
+            'MYSQL_PWD="$MYSQL_PASSWORD" mysql -uspeedy_app speedy_cafe -e "CREATE TABLE should_not_be_allowed (id INT)"'; then
+            echo "Application database user has dangerous schema privileges"
+            exit 1
+          fi
       - name: Diagnose local containers on failure
         if: failure()
         run: docker compose -f deploy/local.compose.yml logs --no-color --tail=100
