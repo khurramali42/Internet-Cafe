@@ -247,7 +247,7 @@ try {
             break;
 
         case 'sync_session':
-            $d = getJsonInput();
+            $d = input();
             $holdsJson = json_encode($d['holds'] ?? []);
             $stmt = $pdo->prepare("INSERT INTO sessions (id, cabinId, customerId, inTime, outTime, ratePerHour, totalHoldMinutes, effectiveMinutes, amountDue, amountPaid, status, createdBy, isManual, manualReason, holdsJson) 
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -260,7 +260,7 @@ try {
             break;
 
         case 'sync_customer':
-            $d = getJsonInput();
+            $d = input();
             $stmt = $pdo->prepare("INSERT INTO customers (id, name, contact, remarks, totalSpent, outstandingBalance) VALUES (?, ?, ?, ?, ?, ?)
                 ON DUPLICATE KEY UPDATE name=?, contact=?, remarks=?, totalSpent=?, outstandingBalance=?");
             $stmt->execute([
@@ -271,7 +271,7 @@ try {
             break;
 
         case 'sync_transaction':
-            $d = getJsonInput();
+            $d = input();
             $stmt = $pdo->prepare("INSERT INTO transactions (id, type, amount, date, description, category, relatedId, customerId, isManual) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON DUPLICATE KEY UPDATE type=?, amount=?, date=?, description=?, category=?, relatedId=?, customerId=?");
             $stmt->execute([
@@ -282,7 +282,7 @@ try {
             break;
 
         case 'sync_inventory':
-            $d = getJsonInput();
+            $d = input();
             $stmt = $pdo->prepare("INSERT INTO inventory (id, name, category, quantity, status, purchaseDate, cost, remarks) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                 ON DUPLICATE KEY UPDATE name=?, category=?, quantity=?, status=?, cost=?, remarks=?");
             $stmt->execute([
@@ -293,13 +293,13 @@ try {
             break;
 
         case 'delete_inventory':
-            $d = getJsonInput();
+            $d = input();
             $pdo->prepare("DELETE FROM inventory WHERE id=?")->execute([$d['id']]);
             echo json_encode(['status'=>'ok']);
             break;
 
         case 'sync_repair':
-            $d = getJsonInput();
+            $d = input();
             $stmt = $pdo->prepare("INSERT INTO repairs (id, cabinId, reason, reportedBy, startTime, expectedFix, status, closedAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                 ON DUPLICATE KEY UPDATE status=?, closedAt=?, expectedFix=?");
             $stmt->execute([
