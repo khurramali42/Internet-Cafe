@@ -18,8 +18,8 @@ jobs:
   frontend-build:
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
         with:
           node-version: '22'
           cache: npm
@@ -41,7 +41,7 @@ jobs:
   php-syntax:
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Check PHP syntax
         run: |
           php -l public/api.php
@@ -94,7 +94,7 @@ jobs:
       SPEEDY_ADMIN_USERNAME: admin
       SPEEDY_ADMIN_PASSWORD: StrongTestPass_2026!xyz
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Install PHP MySQL extension and database client
         run: |
           sudo apt-get update -qq
@@ -133,7 +133,7 @@ jobs:
       SPEEDY_DB_PASSWORD: ci_compose_secret_only
       SPEEDY_DB_ROOT_PASSWORD: ci_compose_root_only
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Validate both Docker Compose deployment models
         run: |
           docker compose --env-file deploy/.env.template -f deploy/local.compose.yml config --quiet
@@ -153,7 +153,7 @@ jobs:
       SPEEDY_DB_PASSWORD: ci_local_password_only
       SPEEDY_DB_ROOT_PASSWORD: ci_local_root_only
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Start complete isolated local deployment
         run: |
           docker compose -f deploy/local.compose.yml up -d --build --wait
