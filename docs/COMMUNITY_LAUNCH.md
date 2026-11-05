@@ -12,7 +12,7 @@ I've been building Speedy Cafe, a browser-based dashboard for gaming lounges, cy
 
 It includes a PC availability dashboard, session timers and billing, customer records, inventory, repair tickets, reporting and an optional PHP/MySQL sync prototype. The frontend can be explored locally with demo data.
 
-It's an **early-stage development preview**, not production-ready. I'm currently working through authentication and backend security before inviting live businesses to use it.
+It's an **early-stage development preview**, not production-ready. Initial backend authentication protections are implemented, but production billing integrity and deployment validation are still pending.
 
 I'd especially value feedback from people who run a PC gaming venue: what is missing from your daily operations?
 
@@ -35,9 +35,13 @@ Suggested tags (verify platform rules): `react`, `typescript`, `php`, `showdev`.
 
 I'm looking for feedback from internet cafe and gaming-lounge operators on a new software project, **Speedy Cafe**. It covers PC cabin status, session billing, customers, inventory and maintenance. It's currently a local-test development preview, not yet suitable for live customer data. If you manage a gaming venue, which task currently takes the most time? Project: https://github.com/khurramali42/Internet-Cafe
 
-## Urdu / Roman Urdu Facebook post
+## Facebook post (English)
 
-Internet cafe ya gaming zone chalate hain? Main **Speedy Cafe** naam ka management dashboard develop kar raha hoon. Ismein PC/cabin status, session timer, billing, customer records, inventory aur maintenance management ke features hain. Abhi yeh **testing/development version** hai, live customer data ke liye ready nahi. Cafe owners aur developers se feedback chahiye ke daily operations mein kaunsi feature sab se zaroori hogi.
+Do you run an internet cafe or gaming center? I'm developing **Speedy Cafe**, a management dashboard for daily operations. It includes PC and cabin status, session timers, billing, customer records, inventory, and maintenance tracking.
+
+This is currently a **development and testing version**. It is not yet approved for handling real customer information or financial transactions.
+
+I'd appreciate feedback from cafe operators and developers: which feature would help you most with everyday operations?
 
 GitHub: https://github.com/khurramali42/Internet-Cafe
 
@@ -54,5 +58,5 @@ GitHub: https://github.com/khurramali42/Internet-Cafe
 - Remove public deployment security blockers.
 - Record a short screen capture with **fictional** data.
 - Add a few annotated screenshots.
-- Add an explicit software license if the owner wants others to reuse or contribute.
+- Check the included MIT license and verify that source assets can be redistributed under its terms.
 - Provide a demo link with a clear privacy/security notice.
