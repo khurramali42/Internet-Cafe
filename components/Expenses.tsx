@@ -1,5 +1,5 @@
 
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { useAppStore } from '../store';
 import { format } from 'date-fns';
 import { TrendingDown, Plus, FileText, Filter, Search, X } from 'lucide-react';
@@ -20,7 +20,8 @@ export const Expenses: React.FC = () => {
   const [category, setCategory] = useState('Internet Bill (ISP)');
   const [savingExpense, setSavingExpense] = useState(false);
   const [expenseError, setExpenseError] = useState('');
-  const [expenseKey, setExpenseKey] = useState<string | null>(null);
+  const expenseKey = useRef<string | null>(null);
+  const expensePending = useRef(false);
 
   const BASE_CATEGORIES = [
     'Internet Bill (ISP)',
@@ -62,20 +63,22 @@ export const Expenses: React.FC = () => {
   const totalMonthlyExpense = filteredExpenses.reduce((acc, t) => acc + t.amount, 0);
 
   const handleSave = async () => {
-      if (!description.trim() || !Number.isFinite(amount) || amount <= 0 || savingExpense) return;
-      const key = expenseKey || crypto.randomUUID();
-      setExpenseKey(key);
+      if (!description.trim() || !Number.isFinite(amount) || amount <= 0 || expensePending.current) return;
+      const key = expenseKey.current || crypto.randomUUID();
+      expenseKey.current = key;
+      expensePending.current = true;
       setSavingExpense(true);
       setExpenseError('');
       const saved = await addTransaction({
           type: 'EXPENSE', amount, description: description.trim(), category: category || 'General'
       }, key);
+      expensePending.current = false;
       setSavingExpense(false);
       if (!saved) {
           setExpenseError('Expense was not confirmed. Verify server records before retrying.');
           return;
       }
-      setExpenseKey(null);
+      expenseKey.current = null;
       setDescription('');
       setAmount(0);
       setIsModalOpen(false);
@@ -98,7 +101,7 @@ export const Expenses: React.FC = () => {
                 setDescription('');
                 setAmount(0);
                 setExpenseError('');
-                setExpenseKey(null);
+                expenseKey.current = null;
             }}
             className="bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-700 flex items-center gap-2 font-medium"
         >
