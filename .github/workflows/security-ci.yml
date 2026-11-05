@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - security/server-auth-hardening
+      - feature/local-hosted-deployment
   pull_request:
     branches:
       - main
@@ -68,6 +69,10 @@ jobs:
           --health-timeout=5s
           --health-retries=10
     env:
+      SPEEDY_DEPLOYMENT_MODE: local
+      SPEEDY_PUBLIC_ORIGIN: http://localhost:8080
+      SPEEDY_LOCAL_HTTP: "1"
+      SPEEDY_TLS_TERMINATED_BY_PROXY: "0"
       SPEEDY_DB_HOST: 127.0.0.1
       SPEEDY_DB_NAME: speedy_cafe
       SPEEDY_DB_USER: root
@@ -95,3 +100,42 @@ jobs:
           exit 1
       - name: Test authentication, CSRF and role authorization
         run: bash scripts/security-smoke.sh
+
+  deployment-config:
+    runs-on: ubuntu-24.04
+    env:
+      SPEEDY_DB_PASSWORD: ci_compose_secret_only
+      SPEEDY_DB_ROOT_PASSWORD: ci_compose_root_only
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate both Docker Compose deployment models
+        run: |
+          docker compose --env-file deploy/.env.template -f deploy/local.compose.yml config --quiet
+          docker compose --env-file deploy/.env.template -f deploy/hosted.compose.yml config --quiet
+      - name: Build the shared frontend and PHP image
+        run: docker build -t speedy-cafe:ci .
+
+  local-stack-smoke:
+    runs-on: ubuntu-24.04
+    env:
+      SPEEDY_DB_PASSWORD: ci_local_password_only
+      SPEEDY_DB_ROOT_PASSWORD: ci_local_root_only
+    steps:
+      - uses: actions/checkout@v4
+      - name: Start complete isolated local deployment
+        run: |
+          docker compose -f deploy/local.compose.yml up -d --build --wait
+      - name: Verify same-origin application and authenticated API
+        run: |
+          curl --fail --silent --show-error http://127.0.0.1:8080/ >/dev/null
+          code="$(curl -s -o /tmp/speedy-status.json -w '%{http_code}' http://127.0.0.1:8080/api.php?action=auth_status)"
+          test "$code" = "200"
+          grep -q '"user":null' /tmp/speedy-status.json
+          code="$(curl -s -o /tmp/speedy-init.json -w '%{http_code}' http://127.0.0.1:8080/api.php?action=init)"
+          test "$code" = "401"
+      - name: Diagnose local containers on failure
+        if: failure()
+        run: docker compose -f deploy/local.compose.yml logs --no-color --tail=100
+      - name: Remove disposable test containers and volumes
+        if: always()
+        run: docker compose -f deploy/local.compose.yml down -v

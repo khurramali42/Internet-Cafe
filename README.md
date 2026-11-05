@@ -25,6 +25,17 @@ The default build is an **isolated fictional demo**. To connect to a real PHP/My
 
 **Do not copy demo credentials into a real deployment.** Before upgrading an existing install, back up the database and review the [secure deployment and credential migration guide](docs/SECURE_DEPLOYMENT.md). The older database schema used plaintext seeded passwords; these no longer work against the protected API.
 
+## Install locally or host one cafe online
+
+The same frontend and authenticated PHP/MySQL backend now have two reproducible Docker configurations:
+
+- **Local installation:** one cafe on one PC at `http://localhost:8080` (loopback only).
+- **Hosted installation:** one cafe per isolated Docker stack and database, using HTTPS via Caddy and your own domain.
+
+See the [local + hosted deployment guide](docs/DUAL_DEPLOYMENT.md) for setup, secrets, initial admin login, and database backups.
+
+**Online mode currently means a hosted instance for one cafe, not a central multi-tenant SaaS.** To operate multiple cafes, use fully separate database installations; there is no tenant-scoped schema or public signup yet. Never use the local HTTP setup over a LAN or the public Internet. Production financial-data and concurrent-user testing are still required.
+
 ## Try the local demo
 
 Requirements: Node.js 18+ and npm.

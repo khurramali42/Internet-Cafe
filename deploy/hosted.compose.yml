@@ -1,0 +1,58 @@
+# One hosted tenant / cafe per independent Docker Compose project and MySQL volume.
+# NOT a shared multi-tenant SaaS. Set a unique SPEEDY_DOMAIN and COMPOSE_PROJECT_NAME.
+name: ${COMPOSE_PROJECT_NAME:?Set a unique COMPOSE_PROJECT_NAME}
+services:
+  database:
+    image: mysql:8.0
+    restart: unless-stopped
+    environment:
+      MYSQL_DATABASE: speedy_cafe
+      MYSQL_USER: speedy_app
+      MYSQL_PASSWORD: ${SPEEDY_DB_PASSWORD:?Set SPEEDY_DB_PASSWORD in private .env}
+      MYSQL_ROOT_PASSWORD: ${SPEEDY_DB_ROOT_PASSWORD:?Set SPEEDY_DB_ROOT_PASSWORD in private .env}
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ../database.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "MYSQL_PWD=\"$$MYSQL_ROOT_PASSWORD\" mysqladmin ping -uroot --silent"]
+      interval: 10s
+      timeout: 5s
+      retries: 15
+  app:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    depends_on:
+      database:
+        condition: service_healthy
+    expose:
+      - "80"
+    environment:
+      SPEEDY_DEPLOYMENT_MODE: hosted
+      SPEEDY_PUBLIC_ORIGIN: https://${SPEEDY_DOMAIN:?Set SPEEDY_DOMAIN}
+      SPEEDY_LOCAL_HTTP: "0"
+      SPEEDY_TLS_TERMINATED_BY_PROXY: "1"
+      SPEEDY_DB_HOST: database
+      SPEEDY_DB_NAME: speedy_cafe
+      SPEEDY_DB_USER: speedy_app
+      SPEEDY_DB_PASS: ${SPEEDY_DB_PASSWORD:?Set SPEEDY_DB_PASSWORD}
+  proxy:
+    image: caddy:2
+    restart: unless-stopped
+    depends_on:
+      - app
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    environment:
+      SPEEDY_DOMAIN: ${SPEEDY_DOMAIN:?Set SPEEDY_DOMAIN}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+volumes:
+  mysql_data:
+  caddy_data:
+  caddy_config:

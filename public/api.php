@@ -33,6 +33,24 @@ function required_text(array $d, string $field, int $limit = 255): string {
     if (!is_string($value) || trim($value) === '' || strlen($value) > $limit) respond(422, ['error' => 'Invalid ' . $field]);
     return trim($value);
 }
+function nonnegative_amount(array $data, string $field): float {
+    $value = $data[$field] ?? null;
+    if (!is_numeric($value) || !is_scalar($value)) respond(422, ['error' => 'Invalid ' . $field]);
+    $number = (float) $value;
+    if (!is_finite($number) || $number < 0 || $number > 100000000) {
+        respond(422, ['error' => 'Invalid ' . $field]);
+    }
+    return round($number, 2);
+}
+function nonnegative_integer(array $data, string $field): int {
+    $value = $data[$field] ?? null;
+    if (!is_numeric($value) || filter_var((string) $value, FILTER_VALIDATE_INT) === false) {
+        respond(422, ['error' => 'Invalid ' . $field]);
+    }
+    $number = (int) $value;
+    if ($number < 0 || $number > 100000000) respond(422, ['error' => 'Invalid ' . $field]);
+    return $number;
+}
 function validate_password(string $password): void {
     if (strlen($password) < 12 || strlen($password) > 200) respond(422, ['error' => 'Password must be 12-200 characters']);
 }
@@ -83,19 +101,40 @@ function validate_business_input(string $action, array $d): void {
     }
 }
 
-function ensure_origin(): void {
+// Every deployment is one cafe with its own database. Shared multi-tenant databases
+// are not supported: the existing tables have no tenant_id column.
+$deploymentMode = getenv('SPEEDY_DEPLOYMENT_MODE') ?: 'hosted';
+if (!in_array($deploymentMode, ['local', 'hosted'], true)) {
+    respond(503, ['error' => 'Invalid deployment mode']);
+}
+$publicOrigin = rtrim((string) getenv('SPEEDY_PUBLIC_ORIGIN'), '/');
+if ($publicOrigin === '' || !filter_var($publicOrigin, FILTER_VALIDATE_URL)) {
+    respond(503, ['error' => 'Public origin is not configured']);
+}
+$parts = parse_url($publicOrigin);
+if (!$parts || !in_array($parts['scheme'] ?? '', ['http', 'https'], true)) {
+    respond(503, ['error' => 'Invalid public origin']);
+}
+$localHttp = $deploymentMode === 'local' && getenv('SPEEDY_LOCAL_HTTP') === '1'
+    && ($parts['scheme'] ?? '') === 'http'
+    && in_array(strtolower($parts['host'] ?? ''), ['localhost', '127.0.0.1'], true);
+$nativeHttps = !empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off';
+$proxyHttps = getenv('SPEEDY_TLS_TERMINATED_BY_PROXY') === '1'
+    && (($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? '') === 'https');
+// Proxy mode is only safe when the backend is not directly exposed to the internet;
+// the reverse proxy must overwrite X-Forwarded-Proto.
+if ($deploymentMode === 'hosted' && ($parts['scheme'] ?? '') !== 'https') {
+    respond(503, ['error' => 'Hosted mode requires HTTPS public origin']);
+}
+if (!$localHttp && !$nativeHttps && !$proxyHttps) {
+    respond(400, ['error' => 'HTTPS is required']);
+}
+$https = !$localHttp;
+function ensure_origin(string $publicOrigin): void {
     $origin = $_SERVER['HTTP_ORIGIN'] ?? '';
-    if ($origin === '') return;
-    $scheme = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
-    $self = $scheme . '://' . ($_SERVER['HTTP_HOST'] ?? '');
-    $allowed = rtrim((string) getenv('SPEEDY_ALLOWED_ORIGIN'), '/');
-    if (!hash_equals($self, $origin) && ($allowed === '' || !hash_equals($allowed, $origin))) {
+    if ($origin !== '' && !hash_equals($publicOrigin, $origin)) {
         respond(403, ['error' => 'Origin not allowed']);
     }
-}
-$https = !empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off'; // Proxy must set trusted server HTTPS; client-controlled headers are not trusted.
-if (!$https && !in_array($_SERVER['REMOTE_ADDR'] ?? '', ['127.0.0.1', '::1'], true)) {
-    respond(400, ['error' => 'HTTPS is required']);
 }
 ini_set('session.use_strict_mode', '1');
 ini_set('session.use_only_cookies', '1');
@@ -109,7 +148,7 @@ session_set_cookie_params([
 ]);
 session_start();
 if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') respond(405, ['error' => 'Cross-origin preflight not supported. Serve frontend and API on the same origin.']);
-ensure_origin();
+ensure_origin($publicOrigin);
 
 $host = getenv('SPEEDY_DB_HOST') ?: '127.0.0.1';
 $db = getenv('SPEEDY_DB_NAME') ?: 'speedy_cafe';
@@ -295,6 +334,14 @@ try {
 
         case 'sync_session':
             $d = input();
+            $d['ratePerHour'] = nonnegative_amount($d, 'ratePerHour');
+            $d['amountDue'] = nonnegative_amount($d, 'amountDue');
+            $d['amountPaid'] = nonnegative_amount($d, 'amountPaid');
+            $d['effectiveMinutes'] = nonnegative_integer($d, 'effectiveMinutes');
+            $d['totalHoldMinutes'] = nonnegative_integer($d, 'totalHoldMinutes');
+            if (!in_array($d['status'] ?? null, ['OPEN', 'CLOSED'], true)) {
+                respond(422, ['error' => 'Invalid session status']);
+            }
             validate_business_input('sync_session', $d);
             $holdsJson = json_encode($d['holds'] ?? []);
             $stmt = $pdo->prepare("INSERT INTO sessions (id, cabinId, customerId, inTime, outTime, ratePerHour, totalHoldMinutes, effectiveMinutes, amountDue, amountPaid, status, createdBy, isManual, manualReason, holdsJson) 
@@ -321,6 +368,10 @@ try {
 
         case 'sync_transaction':
             $d = input();
+            $d['amount'] = nonnegative_amount($d, 'amount');
+            if (!in_array($d['type'] ?? null, ['PAYMENT', 'SALE', 'EXPENSE'], true)) {
+                respond(422, ['error' => 'Invalid transaction type']);
+            }
             validate_business_input('sync_transaction', $d);
             $stmt = $pdo->prepare("INSERT INTO transactions (id, type, amount, date, description, category, relatedId, customerId, isManual) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON DUPLICATE KEY UPDATE type=?, amount=?, date=?, description=?, category=?, relatedId=?, customerId=?");
@@ -333,6 +384,8 @@ try {
 
         case 'sync_inventory':
             $d = input();
+            $d['quantity'] = nonnegative_integer($d, 'quantity');
+            $d['cost'] = nonnegative_amount($d, 'cost');
             validate_business_input('sync_inventory', $d);
             $stmt = $pdo->prepare("INSERT INTO inventory (id, name, category, quantity, status, purchaseDate, cost, remarks) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                 ON DUPLICATE KEY UPDATE name=?, category=?, quantity=?, status=?, cost=?, remarks=?");
