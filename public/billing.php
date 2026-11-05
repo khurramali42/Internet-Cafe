@@ -18,7 +18,7 @@ function billing_money(array $d, string $key, bool $allowZero = true): float {
     return $v;
 }
 function billing_id(array $d, string $key): string {
-    $value = required_text($d, $key, 50);
+    $value = required_text($d, $key, $key === 'requestId' ? 36 : 50);
     if (!preg_match('/^[a-zA-Z0-9_-]{1,50}$/', $value)) respond(422, ['error' => "Invalid $key"]);
     return $value;
 }
@@ -176,7 +176,7 @@ function handle_billing(string $action, PDO $pdo, array $authUser): void {
                 ->execute([$s['cabinId'],$id]);
             if ($paid>0) {
                 $pdo->prepare('INSERT INTO transactions (id,type,amount,date,description,category,relatedId,customerId,isManual) VALUES (?,?,?,?,?,?,?,?,0)')
-                    ->execute(['tx-checkout-'.$id,'PAYMENT',$paid,$now,'Payment for session '.$id,'Session',$id,$s['customerId']]);
+                    ->execute(['tx-chk-'.$id,'PAYMENT',$paid,$now,'Payment for session '.$id,'Session',$id,$s['customerId']]);
             }
             $updated=billing_row($pdo,'SELECT * FROM sessions WHERE id=?',[$id]);
             $pdo->commit();
