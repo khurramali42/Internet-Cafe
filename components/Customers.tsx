@@ -162,6 +162,7 @@ export const Customers: React.FC = () => {
                  onChange={e => setSettleRemarks(e.target.value)}
                />
 
+               {settlementError && <p role="alert" className="text-red-700 text-sm mb-2">{settlementError}</p>}
                <div className="flex justify-end gap-2">
                    <button onClick={() => setSettleModalOpen(null)} className="px-4 py-2 text-gray-500">Cancel</button>
                    <button disabled={settling}
