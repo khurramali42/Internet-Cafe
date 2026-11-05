@@ -227,6 +227,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 $role = $authUser['role'];
+require_once __DIR__ . '/billing.php';
+handle_billing($action, $pdo, $authUser);
+
 if ($action === 'change_password') {
     if ($_SERVER['REQUEST_METHOD'] !== 'POST') respond(405, ['error' => 'POST required']);
     $d = input();
@@ -333,6 +336,9 @@ try {
             break;
 
         case 'sync_session':
+            // Block legacy client-authoritative billing writes. All live session changes
+            // must go through start_session/toggle_session_hold/checkout_session.
+            respond(403, ['error' => 'Use authoritative session operations']);
             $d = input();
             $d['ratePerHour'] = nonnegative_amount($d, 'ratePerHour');
             $d['amountDue'] = nonnegative_amount($d, 'amountDue');
@@ -357,27 +363,27 @@ try {
         case 'sync_customer':
             $d = input();
             validate_business_input('sync_customer', $d);
-            $stmt = $pdo->prepare("INSERT INTO customers (id, name, contact, remarks, totalSpent, outstandingBalance) VALUES (?, ?, ?, ?, ?, ?)
-                ON DUPLICATE KEY UPDATE name=?, contact=?, remarks=?, totalSpent=?, outstandingBalance=?");
-            $stmt->execute([
-                $d['id'], $d['name'], $d['contact'], $d['remarks']??'', $d['totalSpent'], $d['outstandingBalance'],
-                $d['name'], $d['contact'], $d['remarks']??'', $d['totalSpent'], $d['outstandingBalance']
-            ]);
+            // Client may edit contact metadata, never balances or lifetime spend.
+            $d['totalSpent'] = 0;
+            $d['outstandingBalance'] = 0;
+            $stmt = $pdo->prepare("INSERT INTO customers (id, name, contact, remarks, totalSpent, outstandingBalance) VALUES (?, ?, ?, ?, 0, 0)
+                ON DUPLICATE KEY UPDATE name=VALUES(name), contact=VALUES(contact), remarks=VALUES(remarks)");
+            $stmt->execute([$d['id'], $d['name'], $d['contact'], $d['remarks']??'']);
             echo json_encode(['status'=>'ok']);
             break;
 
         case 'sync_transaction':
             $d = input();
+            if (($d['type'] ?? null) === 'PAYMENT') respond(403, ['error' => 'Payments require a billing operation']);
             $d['amount'] = nonnegative_amount($d, 'amount');
             if (!in_array($d['type'] ?? null, ['PAYMENT', 'SALE', 'EXPENSE'], true)) {
                 respond(422, ['error' => 'Invalid transaction type']);
             }
             validate_business_input('sync_transaction', $d);
             $stmt = $pdo->prepare("INSERT INTO transactions (id, type, amount, date, description, category, relatedId, customerId, isManual) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-                ON DUPLICATE KEY UPDATE type=?, amount=?, date=?, description=?, category=?, relatedId=?, customerId=?");
+                ");
             $stmt->execute([
-                $d['id'], $d['type'], $d['amount'], $d['date'], $d['description'], $d['category']??'', $d['relatedId']??null, $d['customerId']??null, $d['isManual']?1:0,
-                $d['type'], $d['amount'], $d['date'], $d['description'], $d['category']??'', $d['relatedId']??null, $d['customerId']??null
+                $d['id'], $d['type'], $d['amount'], $d['date'], $d['description'], $d['category']??'', $d['relatedId']??null, $d['customerId']??null, !empty($d['isManual'])?1:0
             ]);
             echo json_encode(['status'=>'ok']);
             break;
