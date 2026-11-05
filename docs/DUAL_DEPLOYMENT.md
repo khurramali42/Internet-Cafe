@@ -36,6 +36,18 @@ Open **http://localhost:8080** only from the same PC. Docker binds port 8080 to 
 
 The database schema loads on first boot only for a **new empty volume**. It does not overwrite existing data on restart.
 
+### Windows / Docker Desktop notes
+
+On Windows 10/11, install Docker Desktop with the WSL 2 backend, then open PowerShell in the repository folder. Copy `deploy/.env.template` to `.env`, fill the two blank database passwords, and run:
+
+```powershell
+Copy-Item deploy/.env.template .env
+notepad .env
+docker compose --env-file .env -f deploy/local.compose.yml up -d --build
+```
+
+Use `http://localhost:8080` in your own browser. This mode deliberately cannot be accessed from another LAN PC. Windows users can run the included `scripts/backup-database.sh` through WSL/Git Bash, or schedule an equivalent Docker backup command with PowerShell.
+
 ### 3. Hosted single-cafe installation
 
 Point your DNS to your server. From the repo root on that server:
