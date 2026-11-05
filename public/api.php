@@ -83,19 +83,40 @@ function validate_business_input(string $action, array $d): void {
     }
 }
 
-function ensure_origin(): void {
+// Every deployment is one cafe with its own database. Shared multi-tenant databases
+// are not supported: the existing tables have no tenant_id column.
+$deploymentMode = getenv('SPEEDY_DEPLOYMENT_MODE') ?: 'hosted';
+if (!in_array($deploymentMode, ['local', 'hosted'], true)) {
+    respond(503, ['error' => 'Invalid deployment mode']);
+}
+$publicOrigin = rtrim((string) getenv('SPEEDY_PUBLIC_ORIGIN'), '/');
+if ($publicOrigin === '' || !filter_var($publicOrigin, FILTER_VALIDATE_URL)) {
+    respond(503, ['error' => 'Public origin is not configured']);
+}
+$parts = parse_url($publicOrigin);
+if (!$parts || !in_array($parts['scheme'] ?? '', ['http', 'https'], true)) {
+    respond(503, ['error' => 'Invalid public origin']);
+}
+$localHttp = $deploymentMode === 'local' && getenv('SPEEDY_LOCAL_HTTP') === '1'
+    && ($parts['scheme'] ?? '') === 'http'
+    && in_array(strtolower($parts['host'] ?? ''), ['localhost', '127.0.0.1'], true);
+$nativeHttps = !empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off';
+$proxyHttps = getenv('SPEEDY_TLS_TERMINATED_BY_PROXY') === '1'
+    && (($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? '') === 'https');
+// Proxy mode is only safe when the backend is not directly exposed to the internet;
+// the reverse proxy must overwrite X-Forwarded-Proto.
+if ($deploymentMode === 'hosted' && ($parts['scheme'] ?? '') !== 'https') {
+    respond(503, ['error' => 'Hosted mode requires HTTPS public origin']);
+}
+if (!$localHttp && !$nativeHttps && !$proxyHttps) {
+    respond(400, ['error' => 'HTTPS is required']);
+}
+$https = !$localHttp;
+function ensure_origin(string $publicOrigin): void {
     $origin = $_SERVER['HTTP_ORIGIN'] ?? '';
-    if ($origin === '') return;
-    $scheme = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
-    $self = $scheme . '://' . ($_SERVER['HTTP_HOST'] ?? '');
-    $allowed = rtrim((string) getenv('SPEEDY_ALLOWED_ORIGIN'), '/');
-    if (!hash_equals($self, $origin) && ($allowed === '' || !hash_equals($allowed, $origin))) {
+    if ($origin !== '' && !hash_equals($publicOrigin, $origin)) {
         respond(403, ['error' => 'Origin not allowed']);
     }
-}
-$https = !empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off'; // Proxy must set trusted server HTTPS; client-controlled headers are not trusted.
-if (!$https && !in_array($_SERVER['REMOTE_ADDR'] ?? '', ['127.0.0.1', '::1'], true)) {
-    respond(400, ['error' => 'HTTPS is required']);
 }
 ini_set('session.use_strict_mode', '1');
 ini_set('session.use_only_cookies', '1');
@@ -109,7 +130,7 @@ session_set_cookie_params([
 ]);
 session_start();
 if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') respond(405, ['error' => 'Cross-origin preflight not supported. Serve frontend and API on the same origin.']);
-ensure_origin();
+ensure_origin($publicOrigin);
 
 $host = getenv('SPEEDY_DB_HOST') ?: '127.0.0.1';
 $db = getenv('SPEEDY_DB_NAME') ?: 'speedy_cafe';
