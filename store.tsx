@@ -941,14 +941,25 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     sync('sync_customer', 'customers', updated);
   };
 
-  const addTransaction = (t: Omit<Transaction, 'id' | 'date'> & { date?: number }) => {
-    const newT: Transaction = { ...t, id: `tx-${Date.now()}-${Math.floor(Math.random() * 1000)}`, date: t.date || Date.now() };
-    
-    const newTransactions = [...transactions, newT];
-    setTransactions(newTransactions);
-    saveToLocal('transactions', newTransactions);
-    sync('sync_transaction', 'transactions', newT);
+  const addTransaction = async (t: Omit<Transaction, 'id' | 'date'> & { date?: number }, requestId?: string): Promise<boolean> => {
+    if (API_URL) {
+        if (t.type === 'PAYMENT') {
+            setSyncFailure(true);
+            return false; // Payments require checkout or settlement, never arbitrary sync.
+        }
+        const id = `tx-${requestId || crypto.randomUUID()}`;
+        return authoritativeWrite('sync_transaction', { ...t, id, date: t.date || Date.now() });
+    }
+    const newT: Transaction = {
+        ...t, id: `tx-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+        date: t.date || Date.now()
+    };
+    const next = [...transactions, newT];
+    setTransactions(next);
+    saveToLocal('transactions', next);
+    return true;
   };
+
 
   const addInventoryItem = (item: Omit<InventoryItem, 'id'>) => {
     const newItem: InventoryItem = { ...item, id: `inv-${Date.now()}` };
