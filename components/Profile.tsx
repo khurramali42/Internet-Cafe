@@ -4,7 +4,7 @@ import { useAppStore } from '../store';
 import { User as UserIcon, Lock, CheckCircle, AlertTriangle } from 'lucide-react';
 
 export const Profile: React.FC = () => {
-  const { currentUser, changePassword, updateProfile } = useAppStore();
+  const { currentUser, changePassword, updateProfile, isOffline } = useAppStore();
   
   // Profile State
   const [fullName, setFullName] = useState(currentUser?.fullName || '');
@@ -29,8 +29,8 @@ export const Profile: React.FC = () => {
     e.preventDefault();
     setPwMsg({ type: '', text: '' });
 
-    if (newPw.length < 3) {
-        setPwMsg({ type: 'error', text: 'Password must be at least 3 characters.' });
+    if (newPw.length < (isOffline ? 3 : 12)) {
+        setPwMsg({ type: 'error', text: 'Password must be at least 12 characters for server accounts.' });
         return;
     }
     if (newPw !== confirmPw) {
@@ -109,9 +109,9 @@ export const Profile: React.FC = () => {
                        <label className="block text-xs font-bold text-gray-500 uppercase mb-1">New Password</label>
                        <input 
                          type="password" className="w-full border p-2 rounded bg-white text-gray-900"
-                         value={newPw} onChange={e => setNewPw(e.target.value)} required minLength={3}
+                         value={newPw} onChange={e => setNewPw(e.target.value)} required minLength={isOffline ? 3 : 12}
                        />
-                       <p className="text-[10px] text-gray-400 mt-1">Minimum 3 characters, letters and numbers.</p>
+                       <p className="text-[10px] text-gray-400 mt-1">{isOffline ? 'Demo password: minimum 3 characters.' : 'Minimum 12 characters for server accounts.'}</p>
                    </div>
                    <div>
                        <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Confirm New Password</label>

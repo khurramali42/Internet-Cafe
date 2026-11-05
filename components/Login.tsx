@@ -4,7 +4,7 @@ import { useAppStore } from '../store';
 import { Zap, Lock, User, AlertCircle, ArrowRight } from 'lucide-react';
 
 export const Login: React.FC = () => {
-  const { login } = useAppStore();
+  const { login, isOffline } = useAppStore();
   
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
@@ -99,14 +99,14 @@ export const Login: React.FC = () => {
                         {loading ? 'Authenticating...' : <><span className="mt-0.5">Sign In</span> <ArrowRight size={18} /></>}
                     </button>
 
-                    <div className="text-center mt-2">
+                    {isOffline && <div className="text-center mt-2">
                         <button type="button" onClick={() => setView('FORGOT')} className="text-sm text-blue-600 hover:underline font-medium">
-                            Forgot Password?
+                            Demo account recovery
                         </button>
-                    </div>
+                    </div>}
                     
                     <div className="text-center text-xs text-gray-400 mt-4 pt-4 border-t border-gray-100">
-                        Demo: Admin (admin/123) • User (abc/123)
+                        {isOffline ? 'Local demo only: admin / 123' : 'Secure server login. Contact your administrator to reset your password.'}
                     </div>
                 </form>
             ) : (

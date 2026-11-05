@@ -1,0 +1,86 @@
+name: Security Change Validation
+
+on:
+  push:
+    branches:
+      - security/server-auth-hardening
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  frontend-build:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+
+  php-syntax:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check PHP syntax
+        run: |
+          php -l public/api.php
+          php -l scripts/bootstrap-admin.php
+          if grep -n 'getJsonInput' public/api.php; then
+            echo 'Legacy request parser reference remains'
+            exit 1
+          fi
+      - name: Guard against accidentally reintroducing demo DB credentials
+        run: |
+          if grep -Eq "INSERT IGNORE INTO users|Access-Control-Allow-Origin: \*" database.sql public/api.php; then
+            echo "Unsafe seeded users or wildcard origin detected"
+            exit 1
+          fi
+
+  authentication-integration:
+    runs-on: ubuntu-24.04
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: ci_test_only
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -pci_test_only"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=10
+    env:
+      SPEEDY_DB_HOST: 127.0.0.1
+      SPEEDY_DB_NAME: speedy_cafe
+      SPEEDY_DB_USER: root
+      SPEEDY_DB_PASS: ci_test_only
+      SPEEDY_ADMIN_USERNAME: admin
+      SPEEDY_ADMIN_PASSWORD: StrongTestPass_2026!xyz
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install PHP MySQL extension and database client
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y php-mysql default-mysql-client
+      - name: Initialize disposable database and admin
+        run: |
+          mysql -h 127.0.0.1 -uroot -p"$SPEEDY_DB_PASS" < database.sql
+          php scripts/bootstrap-admin.php
+      - name: Start local API
+        run: |
+          php -S 127.0.0.1:8080 -t public >/tmp/speedy-php.log 2>&1 &
+          for attempt in $(seq 1 30); do
+            if curl -s http://127.0.0.1:8080/api.php?action=auth_status >/dev/null; then exit 0; fi
+            sleep 1
+          done
+          cat /tmp/speedy-php.log
+          exit 1
+      - name: Test authentication, CSRF and role authorization
+        run: bash scripts/security-smoke.sh

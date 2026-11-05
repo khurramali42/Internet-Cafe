@@ -19,6 +19,12 @@ A browser-based management project for internet cafes, gaming lounges, PC cabin 
 
 Cafe owners and operators who want to evaluate a management dashboard; developers interested in contributing to an internet cafe software project. This is an early-stage community project, not a tested point-of-sale or access-control solution.
 
+## Authenticated backend (security branch)
+
+The default build is an **isolated fictional demo**. To connect to a real PHP/MySQL backend, configure `VITE_API_URL=/api.php`, provision a strong administrator using the CLI bootstrap script, and serve PHP and the frontend on the same HTTPS origin. The protected API uses server-side sessions, CSRF validation and role authorization.
+
+**Do not copy demo credentials into a real deployment.** Before upgrading an existing install, back up the database and review the [secure deployment and credential migration guide](docs/SECURE_DEPLOYMENT.md). The older database schema used plaintext seeded passwords; these no longer work against the protected API.
+
 ## Try the local demo
 
 Requirements: Node.js 18+ and npm.

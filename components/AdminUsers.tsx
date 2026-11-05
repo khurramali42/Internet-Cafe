@@ -61,8 +61,8 @@ export const AdminUsers: React.FC = () => {
               isActive: formData.isActive
           });
       } else {
-          if (formData.passwordHash.length < 3) {
-              alert("Password must be at least 3 chars");
+          if (formData.passwordHash.length < 12) {
+              alert("Password must be at least 12 characters");
               return;
           }
           addUser({
@@ -78,13 +78,13 @@ export const AdminUsers: React.FC = () => {
   };
 
   const handleResetPassword = () => {
-      if (resetUserId && newResetPw.length >= 3) {
+      if (resetUserId && newResetPw.length >= 12) {
           adminResetPassword(resetUserId, newResetPw);
           setResetUserId(null);
           setNewResetPw('');
           alert("Password reset successfully.");
       } else {
-          alert("Password too short.");
+          alert("Password must be at least 12 characters.");
       }
   };
 

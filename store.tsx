@@ -18,7 +18,8 @@ import {
 
 // --- CONSTANTS ---
 // UPDATED PORT TO 8012
-const API_URL = 'http://localhost:8012/speedy_cafe/api.php'; 
+const API_URL = (import.meta.env.VITE_API_URL || '').trim(); // Blank means local fictional demo
+let liveCsrfToken = ''; 
 const LS_KEY = 'speedy_cafe_offline_v2';
 
 // Helper to generate past timestamps relative to now
@@ -406,6 +407,7 @@ const DEFAULT_AUDIT_LOGS: AuditLog[] = [
 
 // --- HELPER FOR OFFLINE STORAGE ---
 const saveToLocal = (key: keyof AppState, data: any) => {
+    if (API_URL) return; // Never persist live records in browser storage
     try {
         const current = JSON.parse(localStorage.getItem(LS_KEY) || '{}');
         current[key] = data;
@@ -449,39 +451,41 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   }, []);
 
   // --- API WRAPPER WITH OFFLINE FALLBACK ---
-  const safeApiCall = async (method: 'GET' | 'POST', action: string, payload?: any) => {
-      if (isOffline) return null; // Don't try if known offline
+  const safeApiCall = async (method: 'GET' | 'POST', action: string, payload?: any): Promise<any> => {
+       if (!API_URL) return null;
+       try {
+           const opts: RequestInit = {
+               method,
+               credentials: 'same-origin',
+               headers: method === 'POST'
+                 ? { 'Content-Type': 'application/json', 'X-CSRF-Token': liveCsrfToken }
+                 : {}
+           };
+           if (method === 'POST') opts.body = JSON.stringify(payload || {});
+           const res = await fetch(`${API_URL}?action=${encodeURIComponent(action)}`, opts);
+           const body = await res.json();
+           if (!res.ok) { console.error('Server request rejected', action, res.status); return null; }
+           if (body.csrf) liveCsrfToken = body.csrf;
+           return body;
+       } catch (error) {
+           console.error('Server unavailable:', action, error);
+           return null; // No unsafe fallback to demo after authentication fails
+       }
+   };
 
-      try {
-          const opts: RequestInit = { method };
-          if (method === 'POST') {
-              opts.headers = { 'Content-Type': 'application/json' };
-              opts.body = JSON.stringify(payload);
-          }
-          const res = await fetch(`${API_URL}?action=${action}`, opts);
-          // If the API returns HTML (PHP error) instead of JSON, res.json() will crash.
-          // We must handle that.
-          if (!res.ok) throw new Error("API Network Error");
-          
-          const text = await res.text();
-          try {
-              return JSON.parse(text);
-          } catch (e) {
-              console.warn("API returned invalid JSON (Likely PHP Error):", text);
-              throw new Error("Invalid JSON Response");
-          }
-
-      } catch (e) {
-          console.warn(`API Error (${action}): Switching/Staying Offline`, e);
-          setIsOffline(true);
-          return null;
-      }
-  };
-
-  // --- INITIAL DATA LOAD ---
+   // --- INITIAL DATA LOAD ---
   useEffect(() => {
       const loadData = async () => {
-          const data = await safeApiCall('GET', 'init');
+          if (API_URL) {
+               const session = await safeApiCall('GET', 'auth_status');
+               if (!session?.user) {
+                   setIsOffline(false);
+                   setLoading(false);
+                   return;
+               }
+               setCurrentUser({ ...session.user, passwordHash: '' });
+           }
+           const data = await safeApiCall('GET', 'init');
           
           if (data && !data.error) {
               // Online Mode
@@ -504,8 +508,10 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
               setUsers(data.users || [DEFAULT_ADMIN]);
               setAuditLogs(data.auditLogs || []);
               setIsOffline(false); // Connection Successful
-          } else {
-              // Offline Mode: Load from LocalStorage
+          } else if (API_URL) {
+               setIsOffline(false);
+           } else {
+               // Isolated fictional demo storage only
               console.log("Loading from Offline Storage");
               try {
                   const saved = JSON.parse(localStorage.getItem(LS_KEY) || '{}');
@@ -565,9 +571,9 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       if (Array.isArray(data)) {
          saveToLocal(key, data);
       }
-      if (!isOffline) {
-          safeApiCall('POST', action, data);
-      }
+      if (API_URL && !isOffline) {
+           void safeApiCall('POST', action, data);
+       }
   };
 
   // --- LOGGING HELPER ---
@@ -590,6 +596,13 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   // --- AUTH METHODS ---
 
   const login = async (username: string, password: string): Promise<boolean> => {
+       if (API_URL) {
+           const result = await safeApiCall('POST', 'login', { username, password });
+           if (!result?.user) return false;
+           setCurrentUser({ ...result.user, passwordHash: '' });
+           window.location.reload(); // Load authorized records using the new server session
+           return true;
+       }
       const user = users.find(u => u.username === username && u.passwordHash === password);
       
       if (user) {
@@ -610,14 +623,23 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   };
 
   const logout = () => {
-      if (currentUser) {
+       if (API_URL) {
+           void safeApiCall('POST', 'logout').then(() => { liveCsrfToken = ''; window.location.reload(); });
+           setCurrentUser(null);
+           return;
+       }
+       if (currentUser) {
         logAction('LOGOUT', 'User logged out');
       }
       setCurrentUser(null);
   };
 
   const changePassword = async (oldPw: string, newPw: string): Promise<{success: boolean, message: string}> => {
-      if (!currentUser) return { success: false, message: 'Not logged in' };
+       if (API_URL) {
+           const result = await safeApiCall('POST', 'change_password', { oldPassword: oldPw, newPassword: newPw });
+           return { success: !!result, message: result ? 'Password changed successfully' : 'Incorrect current password or new password too short (minimum 12 characters)' };
+       }
+       if (!currentUser) return { success: false, message: 'Not logged in' };
       if (currentUser.passwordHash !== oldPw) return { success: false, message: 'Incorrect old password' };
 
       const updatedUser = { ...currentUser, passwordHash: newPw };
@@ -633,14 +655,15 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   };
 
   const updateProfile = (data: Partial<User>) => {
-      if (!currentUser) return;
+       if (!currentUser) return;
+       if (API_URL) void safeApiCall('POST', 'update_profile', { fullName: data.fullName || currentUser.fullName, email: data.email ?? currentUser.email, phone: data.phone ?? currentUser.phone });
       const updated = { ...currentUser, ...data };
       const newUsers = users.map(u => u.id === currentUser.id ? updated : u);
       
       setUsers(newUsers);
       setCurrentUser(updated);
       saveToLocal('users', newUsers);
-      sync('sync_user', 'users', updated);
+      if (!API_URL) sync('sync_user', 'users', updated); // Server profile route handles this in authenticated mode
 
       logAction('PROFILE_UPDATE', 'User updated profile details');
   };
@@ -648,9 +671,10 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   // --- ADMIN USER MANAGEMENT ---
 
   const addUser = (userData: Omit<User, 'id' | 'lastLoginAt'>) => {
+       if (API_URL && userData.passwordHash.length < 12) return;
       const newUser: User = { ...userData, id: `u-${Date.now()}`, isActive: true };
-      const newUsers = [...users, newUser];
-      setUsers(newUsers);
+      const newUsers = [...users, API_URL ? { ...newUser, passwordHash: '' } : newUser];
+      setUsers(newUsers); // Do not keep the newly created server password in React state
       saveToLocal('users', newUsers);
       sync('sync_user', 'users', newUser);
       logAction('USER_CREATE', `Created user: ${newUser.username}`);
@@ -676,7 +700,11 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   };
 
   const adminResetPassword = (userId: string, newPw: string) => {
-      const user = users.find(u => u.id === userId);
+       if (API_URL) {
+           void safeApiCall('POST', 'admin_reset_password', { id: userId, newPassword: newPw });
+           return;
+       }
+       const user = users.find(u => u.id === userId);
       if(!user) return;
       const updated = { ...user, passwordHash: newPw };
       const newUsers = users.map(u => u.id === userId ? updated : u);
@@ -1040,7 +1068,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     }}>
       {isOffline && (
           <div className="fixed bottom-0 left-0 right-0 bg-red-600 text-white text-xs py-1 px-4 text-center z-[100] shadow-md">
-              <strong>OFFLINE MODE:</strong> Backend disconnected. Changes are saved to browser storage only.
+              <strong>LOCAL DEMO MODE:</strong> Fictional data in this browser, not connected to a production server.
           </div>
       )}
       {children}
