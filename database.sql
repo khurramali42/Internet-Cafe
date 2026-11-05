@@ -15,7 +15,7 @@ CREATE TABLE IF NOT EXISTS users (
     phone VARCHAR(20),
     isActive TINYINT(1) DEFAULT 1,
     lastLoginAt BIGINT
-);
+) ENGINE=InnoDB;
 
 -- No default production passwords are seeded.
 -- Create a strong administrator using: php scripts/bootstrap-admin.php
@@ -28,8 +28,9 @@ CREATE TABLE IF NOT EXISTS customers (
     contact VARCHAR(50),
     remarks TEXT,
     totalSpent DECIMAL(10, 2) DEFAULT 0,
-    outstandingBalance DECIMAL(10, 2) DEFAULT 0
-);
+    outstandingBalance DECIMAL(10, 2) DEFAULT 0,
+    CONSTRAINT chk_customers_totalspent CHECK (totalSpent >= 0)
+) ENGINE=InnoDB;
 
 -- 3. CABINS TABLE
 CREATE TABLE IF NOT EXISTS cabins (
@@ -40,7 +41,7 @@ CREATE TABLE IF NOT EXISTS cabins (
     location VARCHAR(100),
     statusReason TEXT,
     expectedFix VARCHAR(100)
-);
+) ENGINE=InnoDB;
 
 -- Initialize 12 Cabins
 INSERT IGNORE INTO cabins (id, name, status) VALUES 
@@ -73,8 +74,13 @@ CREATE TABLE IF NOT EXISTS sessions (
     createdBy VARCHAR(50),
     isManual TINYINT(1) DEFAULT 0,
     manualReason TEXT,
-    holdsJson JSON -- Stores the array of Hold objects
-);
+    holdsJson JSON, -- Stores the array of Hold objects
+    CONSTRAINT chk_sessions_money CHECK (ratePerHour >= 0 AND amountDue >= 0 AND amountPaid >= 0),
+    CONSTRAINT chk_sessions_times CHECK (inTime > 0 AND (outTime IS NULL OR outTime >= inTime)),
+    CONSTRAINT chk_sessions_duration CHECK (totalHoldMinutes >= 0 AND effectiveMinutes >= 0),
+    INDEX idx_sessions_customer_time (customerId, inTime),
+    INDEX idx_sessions_cabin_state (cabinId, status)
+) ENGINE=InnoDB;
 
 -- 5. TRANSACTIONS TABLE
 CREATE TABLE IF NOT EXISTS transactions (
@@ -86,8 +92,11 @@ CREATE TABLE IF NOT EXISTS transactions (
     category VARCHAR(50),
     relatedId VARCHAR(50), -- Session ID or Invoice ID
     customerId VARCHAR(50),
-    isManual TINYINT(1) DEFAULT 0
-);
+    isManual TINYINT(1) DEFAULT 0,
+    CONSTRAINT chk_transactions_amount CHECK (amount >= 0),
+    INDEX idx_transactions_customer_date (customerId, date),
+    INDEX idx_transactions_related (relatedId)
+) ENGINE=InnoDB;
 
 -- 6. INVENTORY TABLE
 CREATE TABLE IF NOT EXISTS inventory (
@@ -99,8 +108,9 @@ CREATE TABLE IF NOT EXISTS inventory (
     purchaseDate BIGINT,
     cost DECIMAL(10, 2) DEFAULT 0,
     notes TEXT,
-    remarks TEXT
-);
+    remarks TEXT,
+    CONSTRAINT chk_inventory_nonnegative CHECK (quantity >= 0 AND cost >= 0)
+) ENGINE=InnoDB;
 
 -- 7. REPAIR TICKETS TABLE
 CREATE TABLE IF NOT EXISTS repairs (
@@ -112,7 +122,7 @@ CREATE TABLE IF NOT EXISTS repairs (
     expectedFix VARCHAR(100),
     status ENUM('OPEN', 'CLOSED') DEFAULT 'OPEN',
     closedAt BIGINT
-);
+) ENGINE=InnoDB;
 
 -- 8. AUDIT LOGS TABLE
 CREATE TABLE IF NOT EXISTS audit_logs (
@@ -123,11 +133,11 @@ CREATE TABLE IF NOT EXISTS audit_logs (
     details TEXT,
     timestamp BIGINT,
     ipAddress VARCHAR(50)
-);
+) ENGINE=InnoDB;
 
 -- Rate-limit login attempts per account/IP fingerprint (no raw IP or password stored).
 CREATE TABLE IF NOT EXISTS login_attempts (
     identityHash CHAR(64) PRIMARY KEY,
     failures INT NOT NULL DEFAULT 0,
     updatedAt BIGINT NOT NULL
-);
+) ENGINE=InnoDB;
