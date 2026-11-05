@@ -212,8 +212,7 @@ export const Expenses: React.FC = () => {
                      <div>
                          <label className="block text-sm font-medium text-gray-700 mb-1">Category</label>
                          {isCustomCategory ? (
-                             {expenseError && <p role="alert" className="text-red-600 text-sm">{expenseError}</p>}
-             <div className="flex gap-2">
+                             <div className="flex gap-2">
                                 <input 
                                     type="text" 
                                     className="w-full border p-2 rounded bg-white text-gray-900 border-red-500 ring-1 ring-red-500"
@@ -270,6 +269,7 @@ export const Expenses: React.FC = () => {
                             onChange={e => setAmount(Number(e.target.value))}
                          />
                      </div>
+                     {expenseError && <p role="alert" className="text-red-600 text-sm">{expenseError}</p>}
                      <button 
                         disabled={savingExpense}
                         onClick={() => { void handleSave(); }}
