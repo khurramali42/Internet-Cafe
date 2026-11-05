@@ -18,6 +18,9 @@ export const Expenses: React.FC = () => {
   const [description, setDescription] = useState('');
   const [amount, setAmount] = useState(0);
   const [category, setCategory] = useState('Internet Bill (ISP)');
+  const [savingExpense, setSavingExpense] = useState(false);
+  const [expenseError, setExpenseError] = useState('');
+  const [expenseKey, setExpenseKey] = useState<string | null>(null);
 
   const BASE_CATEGORIES = [
     'Internet Bill (ISP)',
@@ -58,16 +61,21 @@ export const Expenses: React.FC = () => {
 
   const totalMonthlyExpense = filteredExpenses.reduce((acc, t) => acc + t.amount, 0);
 
-  const handleSave = () => {
-      if (!description || amount <= 0) return;
-
-      addTransaction({
-          type: 'EXPENSE',
-          amount,
-          description,
-          category: category || 'General'
-      });
-      
+  const handleSave = async () => {
+      if (!description.trim() || !Number.isFinite(amount) || amount <= 0 || savingExpense) return;
+      const key = expenseKey || crypto.randomUUID();
+      setExpenseKey(key);
+      setSavingExpense(true);
+      setExpenseError('');
+      const saved = await addTransaction({
+          type: 'EXPENSE', amount, description: description.trim(), category: category || 'General'
+      }, key);
+      setSavingExpense(false);
+      if (!saved) {
+          setExpenseError('Expense was not confirmed. Verify server records before retrying.');
+          return;
+      }
+      setExpenseKey(null);
       setDescription('');
       setAmount(0);
       setIsModalOpen(false);
@@ -89,6 +97,8 @@ export const Expenses: React.FC = () => {
                 setCategory(BASE_CATEGORIES[0]);
                 setDescription('');
                 setAmount(0);
+                setExpenseError('');
+                setExpenseKey(null);
             }}
             className="bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-700 flex items-center gap-2 font-medium"
         >
@@ -202,7 +212,8 @@ export const Expenses: React.FC = () => {
                      <div>
                          <label className="block text-sm font-medium text-gray-700 mb-1">Category</label>
                          {isCustomCategory ? (
-                             <div className="flex gap-2">
+                             {expenseError && <p role="alert" className="text-red-600 text-sm">{expenseError}</p>}
+             <div className="flex gap-2">
                                 <input 
                                     type="text" 
                                     className="w-full border p-2 rounded bg-white text-gray-900 border-red-500 ring-1 ring-red-500"
@@ -260,7 +271,8 @@ export const Expenses: React.FC = () => {
                          />
                      </div>
                      <button 
-                        onClick={handleSave}
+                        disabled={savingExpense}
+                        onClick={() => { void handleSave(); }}
                         className="w-full bg-red-600 text-white font-bold py-3 rounded-lg hover:bg-red-700 mt-2"
                      >
                          Record Expense
