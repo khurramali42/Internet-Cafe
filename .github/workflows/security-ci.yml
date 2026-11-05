@@ -5,6 +5,7 @@ on:
     branches:
       - security/server-auth-hardening
       - feature/local-hosted-deployment
+      - release/database-recovery-hardening
       - fix/atomic-cafe-billing
   pull_request:
     branches:
@@ -35,6 +36,7 @@ jobs:
         run: |
           php -l public/api.php
           php -l public/billing.php
+          php -l scripts/migrate-financial-schema.php
           php -l scripts/bootstrap-admin.php
           if grep -n 'getJsonInput' public/api.php; then
             echo 'Legacy request parser reference remains'
@@ -104,6 +106,16 @@ jobs:
         run: bash scripts/security-smoke.sh
       - name: Test atomic billing, idempotency and customer ledger
         run: bash scripts/billing-smoke.sh
+      - name: Validate additive financial migration is repeatable
+        env:
+          SPEEDY_MIGRATION_BACKUP_CONFIRMED: "1"
+        run: |
+          php scripts/migrate-financial-schema.php
+          php scripts/migrate-financial-schema.php
+      - name: Verify disposable MySQL backup and restore
+        env:
+          SPEEDY_DISPOSABLE_RESTORE_DRILL: "1"
+        run: bash scripts/ci-restore-drill.sh
 
   deployment-config:
     runs-on: ubuntu-24.04
