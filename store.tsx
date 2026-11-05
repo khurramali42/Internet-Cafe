@@ -443,6 +443,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const [now, setNow] = useState(Date.now());
   const [loading, setLoading] = useState(true);
   const [isOffline, setIsOffline] = useState(false);
+  const [syncFailure, setSyncFailure] = useState(false);
 
   // Global ticker
   useEffect(() => {
@@ -572,7 +573,9 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
          saveToLocal(key, data);
       }
       if (API_URL && !isOffline) {
-           void safeApiCall('POST', action, data);
+           void safeApiCall('POST', action, data).then((response) => {
+               if (!response) setSyncFailure(true);
+           });
        }
   };
 
@@ -1066,6 +1069,12 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       login, logout, changePassword, updateProfile,
       addUser, updateUser, deleteUser, adminResetPassword
     }}>
+      {API_URL && syncFailure && (
+          <div role="alert" className="fixed bottom-0 left-0 right-0 bg-amber-700 text-white text-sm py-2 px-4 text-center z-[110] shadow-xl">
+              <strong>SERVER SAVE FAILED:</strong> One or more changes may not have been saved.
+              Stop entering new records, check the server connection, then reload to reconcile with stored data.
+          </div>
+      )}
       {isOffline && (
           <div className="fixed bottom-0 left-0 right-0 bg-red-600 text-white text-xs py-1 px-4 text-center z-[100] shadow-md">
               <strong>LOCAL DEMO MODE:</strong> Fictional data in this browser, not connected to a production server.

@@ -36,6 +36,53 @@ function required_text(array $d, string $field, int $limit = 255): string {
 function validate_password(string $password): void {
     if (strlen($password) < 12 || strlen($password) > 200) respond(422, ['error' => 'Password must be 12-200 characters']);
 }
+function nonnegative_number(array $d, string $field, float $max = 1000000000): float {
+    $value = $d[$field] ?? null;
+    if ((!is_int($value) && !is_float($value)) || !is_finite((float) $value)
+        || (float) $value < 0 || (float) $value > $max) {
+        respond(422, ['error' => 'Invalid numeric field: ' . $field]);
+    }
+    return (float) $value;
+}
+function optional_nonnegative_number(array $d, string $field, float $max = 1000000000): void {
+    if (array_key_exists($field, $d) && $d[$field] !== null) nonnegative_number($d, $field, $max);
+}
+function validate_business_input(string $action, array $d): void {
+    if ($action === 'sync_transaction') {
+        required_text($d, 'id', 50);
+        if (!in_array($d['type'] ?? null, ['PAYMENT', 'SALE', 'EXPENSE'], true)) respond(422, ['error' => 'Invalid transaction type']);
+        nonnegative_number($d, 'amount');
+        nonnegative_number($d, 'date', 9999999999999);
+        required_text($d, 'description', 2000);
+    } elseif ($action === 'sync_session') {
+        required_text($d, 'id', 50);
+        required_text($d, 'cabinId', 50);
+        required_text($d, 'customerId', 50);
+        if (!in_array($d['status'] ?? null, ['OPEN', 'CLOSED'], true)) respond(422, ['error' => 'Invalid session status']);
+        foreach (['inTime', 'ratePerHour', 'totalHoldMinutes', 'effectiveMinutes', 'amountDue', 'amountPaid'] as $field) {
+            nonnegative_number($d, $field, $field === 'inTime' ? 9999999999999 : 1000000000);
+        }
+        optional_nonnegative_number($d, 'outTime', 9999999999999);
+        if (isset($d['outTime']) && $d['outTime'] < $d['inTime']) respond(422, ['error' => 'Session end precedes start']);
+        if (!isset($d['holds']) || !is_array($d['holds'])) respond(422, ['error' => 'Invalid session holds']);
+    } elseif ($action === 'sync_customer') {
+        required_text($d, 'id', 50);
+        required_text($d, 'name', 100);
+        optional_nonnegative_number($d, 'totalSpent');
+        // A negative outstandingBalance can represent prepaid credit.
+        if (isset($d['outstandingBalance']) && (!is_numeric($d['outstandingBalance'])
+             || !is_finite((float) $d['outstandingBalance']) || abs((float)$d['outstandingBalance']) > 1000000000)) {
+            respond(422, ['error' => 'Invalid outstanding balance']);
+        }
+    } elseif ($action === 'sync_inventory') {
+        required_text($d, 'id', 50);
+        required_text($d, 'name', 100);
+        $qty = nonnegative_number($d, 'quantity', 1000000);
+        if (floor($qty) !== $qty) respond(422, ['error' => 'Quantity must be a whole number']);
+        nonnegative_number($d, 'cost');
+    }
+}
+
 function ensure_origin(): void {
     $origin = $_SERVER['HTTP_ORIGIN'] ?? '';
     if ($origin === '') return;
@@ -248,6 +295,7 @@ try {
 
         case 'sync_session':
             $d = input();
+            validate_business_input('sync_session', $d);
             $holdsJson = json_encode($d['holds'] ?? []);
             $stmt = $pdo->prepare("INSERT INTO sessions (id, cabinId, customerId, inTime, outTime, ratePerHour, totalHoldMinutes, effectiveMinutes, amountDue, amountPaid, status, createdBy, isManual, manualReason, holdsJson) 
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -261,6 +309,7 @@ try {
 
         case 'sync_customer':
             $d = input();
+            validate_business_input('sync_customer', $d);
             $stmt = $pdo->prepare("INSERT INTO customers (id, name, contact, remarks, totalSpent, outstandingBalance) VALUES (?, ?, ?, ?, ?, ?)
                 ON DUPLICATE KEY UPDATE name=?, contact=?, remarks=?, totalSpent=?, outstandingBalance=?");
             $stmt->execute([
@@ -272,6 +321,7 @@ try {
 
         case 'sync_transaction':
             $d = input();
+            validate_business_input('sync_transaction', $d);
             $stmt = $pdo->prepare("INSERT INTO transactions (id, type, amount, date, description, category, relatedId, customerId, isManual) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON DUPLICATE KEY UPDATE type=?, amount=?, date=?, description=?, category=?, relatedId=?, customerId=?");
             $stmt->execute([
@@ -283,6 +333,7 @@ try {
 
         case 'sync_inventory':
             $d = input();
+            validate_business_input('sync_inventory', $d);
             $stmt = $pdo->prepare("INSERT INTO inventory (id, name, category, quantity, status, purchaseDate, cost, remarks) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                 ON DUPLICATE KEY UPDATE name=?, category=?, quantity=?, status=?, cost=?, remarks=?");
             $stmt->execute([

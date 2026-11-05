@@ -35,6 +35,15 @@ jobs:
             echo 'Legacy request parser reference remains'
             exit 1
           fi
+      - name: Check public distribution hygiene
+        run: |
+          test -f LICENSE
+          test ! -e backend_api_code.txt
+          test ! -e backend_database_code.txt
+          if grep -n 'Access-Control-Allow-Origin: \\*' public/api.php; then
+            echo "Wildcard CORS is unsafe"
+            exit 1
+          fi
       - name: Guard against accidentally reintroducing demo DB credentials
         run: |
           if grep -Eq "INSERT IGNORE INTO users|Access-Control-Allow-Origin: \*" database.sql public/api.php; then

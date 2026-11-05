@@ -68,6 +68,20 @@ code="$(curl -sS -b "$cookie" -o /tmp/stock-write.json -w '%{http_code}' -X POST
   "$base?action=sync_inventory")"
 test "$code" = 200 || { echo "FAIL inventory sync: $code"; cat /tmp/stock-write.json; exit 1; }
 
+
+# Reject tampered client-side financial values.
+bad_finance_code="$(curl -sS -b "$cookie" -o /tmp/invalid-finance.json -w '%{http_code}' \
+  -X POST -H "X-CSRF-Token: $csrf" -H 'Content-Type: application/json' \
+  --data '{"id":"bad-finance","type":"SALE","amount":-999,"date":1783500000000,"description":"Invalid total"}' \
+  "$base?action=sync_transaction")"
+test "$bad_finance_code" = 422 || { echo "FAIL negative sale rejected: $bad_finance_code"; exit 1; }
+
+bad_stock_code="$(curl -sS -b "$cookie" -o /tmp/invalid-stock.json -w '%{http_code}' \
+  -X POST -H "X-CSRF-Token: $csrf" -H 'Content-Type: application/json' \
+  --data '{"id":"bad-stock","name":"Invalid","quantity":-5,"cost":1}' \
+  "$base?action=sync_inventory")"
+test "$bad_stock_code" = 422 || { echo "FAIL negative stock rejected: $bad_stock_code"; exit 1; }
+
 # Rate limiter must not be bypassable by opening a fresh session each attempt.
 for i in 1 2 3 4 5; do
   code="$(curl -sS -o /tmp/throttle.json -w '%{http_code}' -X POST \
