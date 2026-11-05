@@ -26,6 +26,7 @@ export const CheckInModal: React.FC<CheckInModalProps> = ({ cabinId, isOpen, onC
 
   const [savingCheckIn, setSavingCheckIn] = useState(false);
   const [checkInError, setCheckInError] = useState('');
+  const [checkInKey, setCheckInKey] = useState<string | null>(null);
   const handleCheckIn = async () => {
     if (savingCheckIn) return;
     if (isNewCustomer && !newCustName.trim()) return;
@@ -38,7 +39,9 @@ export const CheckInModal: React.FC<CheckInModalProps> = ({ cabinId, isOpen, onC
     }
     setSavingCheckIn(true);
     setCheckInError('');
-    const success = await checkIn(cabinId, finalCustomerId, rate, candidate);
+    const requestId = checkInKey || crypto.randomUUID();
+    setCheckInKey(requestId);
+    const success = await checkIn(cabinId, finalCustomerId, rate, candidate, requestId);
     setSavingCheckIn(false);
     if (success) onClose();
     else setCheckInError('Session was not saved. Check the cabin, customer and approved hourly rate.');
@@ -778,6 +781,7 @@ export const ManualEntryModal: React.FC<ManualEntryModalProps> = ({ isOpen, onCl
     const [reason, setReason] = useState('Power Failure');
     const [manualSaving, setManualSaving] = useState(false);
     const [manualError, setManualError] = useState('');
+    const [manualKey, setManualKey] = useState<string | null>(null);
 
     // New Customer State
     const [isNewCustomer, setIsNewCustomer] = useState(false);
@@ -794,6 +798,8 @@ export const ManualEntryModal: React.FC<ManualEntryModalProps> = ({ isOpen, onCl
             setAmount(0);
             setPaidAmount(0);
             setSearchContact('');
+            setManualKey(null);
+            setManualError('');
             setIsNewCustomer(false);
         }
     }, [isOpen]);
@@ -819,12 +825,14 @@ export const ManualEntryModal: React.FC<ManualEntryModalProps> = ({ isOpen, onCl
         const timestamp = new Date(`${date}T${time}`).getTime();
         setManualSaving(true);
         setManualError('');
+        const requestId = manualKey || crypto.randomUUID();
+        setManualKey(requestId);
         const ok = await addManualRecord({
             customerId,
             newCustomer: isNewCustomer ? { name: newCustName, contact: newCustContact } : undefined,
             cabinId, startTime: timestamp, durationMinutes: Number(duration),
             amount: Number(amount), paidAmount: Number(paidAmount), reason
-        });
+        }, requestId);
         setManualSaving(false);
         if (ok) onClose();
         else setManualError('Manual entry was not confirmed. Check the record before retrying.');
