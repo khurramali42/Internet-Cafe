@@ -33,6 +33,19 @@ function required_text(array $d, string $field, int $limit = 255): string {
     if (!is_string($value) || trim($value) === '' || strlen($value) > $limit) respond(422, ['error' => 'Invalid ' . $field]);
     return trim($value);
 }
+function optional_profile_field(array $data, string $field, int $maxLength): ?string {
+    $value = $data[$field] ?? null;
+    if ($value === null || $value === '') return null;
+    if (!is_string($value) || strlen($value) > $maxLength || preg_match('/[\\x00-\\x1F\\x7F]/', $value)) {
+        respond(422, ['error' => 'Invalid ' . $field]);
+    }
+    $value = trim($value);
+    if ($value === '') return null;
+    if ($field === 'email' && filter_var($value, FILTER_VALIDATE_EMAIL) === false) {
+        respond(422, ['error' => 'Invalid email']);
+    }
+    return $value;
+}
 function nonnegative_amount(array $data, string $field): float {
     $value = $data[$field] ?? null;
     if (!is_numeric($value) || !is_scalar($value)) respond(422, ['error' => 'Invalid ' . $field]);
@@ -258,6 +271,8 @@ if ($action === 'sync_user') {
     $id = required_text($d, 'id', 50);
     $username = required_text($d, 'username', 50);
     $fullName = required_text($d, 'fullName', 100);
+    $email = optional_profile_field($d, 'email', 100);
+    $phone = optional_profile_field($d, 'phone', 20);
     $targetRole = $d['role'] ?? 'USER';
     if (!in_array($targetRole, ['ADMIN', 'USER'], true)) respond(422, ['error' => 'Invalid role']);
     $active = !empty($d['isActive']) ? 1 : 0;
@@ -267,12 +282,12 @@ if ($action === 'sync_user') {
     $exists = (bool) $stmt->fetch();
     if ($exists) {
         $pdo->prepare('UPDATE users SET username=?, fullName=?, email=?, phone=?, role=?, isActive=? WHERE id=?')
-            ->execute([$username, $fullName, $d['email'] ?? null, $d['phone'] ?? null, $targetRole, $active, $id]);
+            ->execute([$username, $fullName, $email, $phone, $targetRole, $active, $id]);
     } else {
         $password = required_text($d, 'passwordHash', 200); // Legacy UI form field: treated as a raw NEW password only.
         validate_password($password);
         $pdo->prepare('INSERT INTO users (id,username,passwordHash,fullName,role,isActive,email,phone) VALUES (?,?,?,?,?,?,?,?)')
-            ->execute([$id, $username, password_hash($password, PASSWORD_DEFAULT), $fullName, $targetRole, $active, $d['email'] ?? null, $d['phone'] ?? null]);
+            ->execute([$id, $username, password_hash($password, PASSWORD_DEFAULT), $fullName, $targetRole, $active, $email, $phone]);
     }
     respond(200, ['status' => 'ok']);
 }
@@ -288,8 +303,10 @@ if ($action === 'update_profile') {
     if ($_SERVER['REQUEST_METHOD'] !== 'POST') respond(405, ['error' => 'POST required']);
     $d = input();
     $name = required_text($d, 'fullName', 100);
+    $email = optional_profile_field($d, 'email', 100);
+    $phone = optional_profile_field($d, 'phone', 20);
     $pdo->prepare('UPDATE users SET fullName=?, email=?, phone=? WHERE id=?')
-        ->execute([$name, $d['email'] ?? null, $d['phone'] ?? null, $authUser['id']]);
+        ->execute([$name, $email, $phone, $authUser['id']]);
     respond(200, ['status' => 'ok']);
 }
 if ($action === 'init' && $_SERVER['REQUEST_METHOD'] !== 'GET') respond(405, ['error' => 'GET required']);
