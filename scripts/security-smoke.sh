@@ -31,6 +31,11 @@ code="$(curl -sS -b "$cookie" -o /tmp/invalidorigin.json -w '%{http_code}' -X PO
   -H "X-CSRF-Token: $csrf" -H 'Content-Type: application/json' --data '{}' "$base?action=sync_customer")"
 test "$code" = 403 || { echo "FAIL origin check: $code"; exit 1; }
 
+# Check that profile field validation rejects invalid data before database writes.
+code="$(curl -sS -b "$cookie" -o /tmp/profile-email-check.json -w '%{http_code}' -X POST \
+  -H "X-CSRF-Token: $csrf" -H 'Content-Type: application/json' \
+  --data '{"fullName":"System Admin","email":"invalid email"}' "$base?action=update_profile")"
+test "$code" = 422 || { echo "FAIL profile email validation: $code"; exit 1; }
 code="$(curl -sS -b "$cookie" -o /tmp/adduser.json -w '%{http_code}' -X POST -H "X-CSRF-Token: $csrf" \
   -H 'Content-Type: application/json' \
   --data '{"id":"u-sec-test","username":"operator_test","passwordHash":"StrongStaffPassword_123!","fullName":"Test Operator","role":"USER","isActive":true}' "$base?action=sync_user")"
