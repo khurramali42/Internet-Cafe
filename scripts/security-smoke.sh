@@ -45,6 +45,19 @@ code="$(curl -sS -b "$cookie.staff" -o /tmp/forbidden.json -w '%{http_code}' -X 
   -H "X-CSRF-Token: $staff_csrf" -H 'Content-Type: application/json' \
   --data '{"id":"u-admin"}' "$base?action=delete_user")"
 test "$code" = 403 || { echo "FAIL staff authorization: $code"; exit 1; }
+# A password reset must invalidate already-authenticated staff sessions, even if
+# the administrator chooses the same password (new password hash and token).
+code="$(curl -sS -b "$cookie" -o /tmp/reset-staff.json -w '%{http_code}' -X POST \
+  -H "X-CSRF-Token: $csrf" -H 'Content-Type: application/json' \
+  --data '{"id":"u-sec-test","newPassword":"StrongStaffPassword_123!"}' \
+  "$base?action=admin_reset_password")"
+test "$code" = 200 || { echo "FAIL admin password reset: $code"; exit 1; }
+code="$(curl -sS -b "$cookie.staff" -o /tmp/stale-staff.json -w '%{http_code}' "$base?action=init")"
+test "$code" = 401 || { echo "FAIL stale staff session was not revoked: $code"; exit 1; }
+code="$(curl -sS -c "$cookie.staff" -b "$cookie.staff" -o /tmp/relogin-staff.json -w '%{http_code}' -X POST \
+  -H 'Content-Type: application/json' \
+  --data '{"username":"operator_test","password":"StrongStaffPassword_123!"}' "$base?action=login")"
+test "$code" = 200 || { echo "FAIL new staff login after reset: $code"; exit 1; }
 rm -f "$cookie.staff"
 
 
