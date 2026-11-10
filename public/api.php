@@ -193,7 +193,12 @@ if ($action === 'login') {
     }
     $pdo->prepare('DELETE FROM login_attempts WHERE identityHash=?')->execute([$identity]);
     session_regenerate_id(true);
-    $_SESSION = ['user_id' => $found['id'], 'csrf' => bin2hex(random_bytes(32))];
+    $_SESSION = [
+        'user_id' => $found['id'],
+        'csrf' => bin2hex(random_bytes(32)),
+        // Bound to the persisted credential, so old sessions fail after a reset.
+        'credential_tag' => hash('sha256', (string) $found['passwordHash']),
+    ];
     $pdo->prepare('UPDATE users SET lastLoginAt = ? WHERE id = ?')->execute([(int) (microtime(true) * 1000), $found['id']]);
     respond(200, ['user' => clean_user($found), 'csrf' => $_SESSION['csrf']]);
 }
@@ -214,6 +219,16 @@ if (isset($_SESSION['user_id'])) {
     $stmt = $pdo->prepare('SELECT * FROM users WHERE id = ? AND isActive = 1 LIMIT 1');
     $stmt->execute([$_SESSION['user_id']]);
     $authUser = $stmt->fetch() ?: null;
+    if ($authUser) {
+        $tag = $_SESSION['credential_tag'] ?? null;
+        $expectedTag = hash('sha256', (string) $authUser['passwordHash']);
+        if (!is_string($tag) || !hash_equals($expectedTag, $tag)) {
+            // Also revokes sessions created before this protection was deployed.
+            $_SESSION = [];
+            session_destroy();
+            $authUser = null;
+        }
+    }
 }
 if ($action === 'auth_status') {
     respond(200, $authUser
@@ -237,8 +252,11 @@ if ($action === 'change_password') {
     $new = required_text($d, 'newPassword', 200);
     validate_password($new);
     if (!password_verify($old, $authUser['passwordHash'])) respond(403, ['error' => 'Incorrect current password']);
-    $pdo->prepare('UPDATE users SET passwordHash=? WHERE id=?')->execute([password_hash($new, PASSWORD_DEFAULT), $authUser['id']]);
+    $newHash = password_hash($new, PASSWORD_DEFAULT);
+    $pdo->prepare('UPDATE users SET passwordHash=? WHERE id=?')->execute([$newHash, $authUser['id']]);
     session_regenerate_id(true);
+    // Keep the password-changing browser signed in; revoke every other session.
+    $_SESSION['credential_tag'] = hash('sha256', $newHash);
     respond(200, ['status' => 'ok']);
 }
 if ($action === 'admin_reset_password') {
@@ -248,7 +266,12 @@ if ($action === 'admin_reset_password') {
     $id = required_text($d, 'id', 50);
     $new = required_text($d, 'newPassword', 200);
     validate_password($new);
-    $pdo->prepare('UPDATE users SET passwordHash=? WHERE id=?')->execute([password_hash($new, PASSWORD_DEFAULT), $id]);
+    $newHash = password_hash($new, PASSWORD_DEFAULT);
+    $pdo->prepare('UPDATE users SET passwordHash=? WHERE id=?')->execute([$newHash, $id]);
+    if ($id === $authUser['id']) {
+        session_regenerate_id(true);
+        $_SESSION['credential_tag'] = hash('sha256', $newHash);
+    }
     respond(200, ['status' => 'ok']);
 }
 if ($action === 'sync_user') {
